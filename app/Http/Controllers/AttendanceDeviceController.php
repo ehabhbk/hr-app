@@ -13,11 +13,9 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 <<<<<<< HEAD
 use Jmrashed\Zkteco\Lib\ZKTeco;
-=======
-use App\Services\ZKTecoService;
-use Rats\Zkteco\Lib\Helper\Attendance;
-use Rats\Zkteco\Lib\ZKTeco;
->>>>>>> a81432f2abe5fb16d6f4601ff489ad1c146520ac
+//use App\Services\ZKTecoService;
+//use Rats\Zkteco\Lib\Helper\Attendance;
+//use Rats\Zkteco\Lib\ZKTeco;
 
 class AttendanceDeviceController extends Controller
 {
