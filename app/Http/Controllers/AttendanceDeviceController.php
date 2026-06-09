@@ -11,11 +11,8 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
-<<<<<<< HEAD
+use App\Services\ZKTecoService;
 use Jmrashed\Zkteco\Lib\ZKTeco;
-//use App\Services\ZKTecoService;
-//use Rats\Zkteco\Lib\Helper\Attendance;
-//use Rats\Zkteco\Lib\ZKTeco;
 
 class AttendanceDeviceController extends Controller
 {
@@ -393,11 +390,21 @@ class AttendanceDeviceController extends Controller
         $result = [];
 
         if ($uid) {
-            $result = $zk->getFingerprint((int)$uid);
+            $raw = $zk->getFingerprint((int)$uid);
+            if (!empty($raw)) {
+                foreach ($raw as $fingerId => $template) {
+                    $result[$fingerId] = base64_encode($template);
+                }
+            }
         } else {
             $users = $zk->getUser();
             foreach ($users as $user) {
-                $result[$user['userid']] = $zk->getFingerprint($user['uid']);
+                $raw = $zk->getFingerprint($user['uid']);
+                if (!empty($raw)) {
+                    foreach ($raw as $fingerId => $template) {
+                        $result[$user['userid']][$fingerId] = base64_encode($template);
+                    }
+                }
             }
         }
 
@@ -545,160 +552,7 @@ class AttendanceDeviceController extends Controller
         ]);
     }
 
-    /**
-     * تسجيل بصمة مباشر (Live Enrollment)
-     *
-     * 1. تسجيل المستخدم على الجهاز (setUser)
-     * 2. محاولة إرسال أمر CMD_USER_TEMP_WRQ لتشغيل وضع التسجيل
-     * 3. عرض رسالة على شاشة الجهاز
-     * 4. checkEnrollment تكتشف البصمة وتنزلها وتحفظها
-     *
-     * POST /attendance-device/{id}/enroll-fingerprint
-     */
-    public function enrollFingerprint(Request $request, $id)
-    {
-        $device = AttendanceDevice::findOrFail($id);
 
-        $data = $request->validate([
-            'user_id' => 'required|integer|min:1|max:65535',
-            'name' => 'nullable|string',
-            'finger_id' => 'required|integer|min:0|max:9',
-        ]);
-
-        $zk = $this->connect($device);
-        if (!$zk) {
-            return response()->json(['message' => 'Connection failed'], 422);
-        }
-
-        try {
-            $uid = (int)$data['user_id'];
-            $name = mb_strcut($data['name'] ?? $data['user_id'], 0, 24);
-            $fingerId = (int)$data['finger_id'];
-
-            // 1. جرب getUser الأول عشان نثبت الـ session
-            $testUsers = $zk->getUser();
-            
-            // 2. جرب setUser مباشرة بـ _command() عشان نشوف الرد
-            $cmd = \Jmrashed\Zkteco\Lib\Helper\Util::CMD_SET_USER;
-            $byte1 = chr($uid % 256);
-            $byte2 = chr($uid >> 8);
-            $cmdStr = $byte1 . $byte2 . chr(0) . str_repeat(chr(0), 8) . str_pad($name, 24, chr(0)) . str_repeat(chr(0), 4) . str_pad(chr(1), 9, chr(0)) . str_pad((string)$uid, 9, chr(0)) . str_repeat(chr(0), 15);
-            $rawResult = $zk->_command($cmd, $cmdStr);
-            
-            if ($rawResult === false) {
-                $zk->disconnect();
-                return response()->json([
-                    'success' => false,
-                    'message' => "فشل تسجيل المستخدم (uid=$uid)"
-                ], 500);
-            }
-            // الـ _command رجع رد فاضي (ACK_OK) — يعنلي نجاح!
-
-            // 2. تحقق من وجود بصمة مسبقة
-            $existingFp = $zk->getFingerprint($uid);
-            $hasExistingFp = !empty($existingFp) && !empty($existingFp[$fingerId]);
-
-            if ($hasExistingFp) {
-                $zk->disconnect();
-                return response()->json([
-                    'success' => true,
-                    'enrolled_on_device' => true,
-                    'message' => 'البصمة مسجلة مسبقاً على الجهاز'
-                ]);
-            }
-
-            // 3. أرسل أمر بدء التسجيل للجهاز
-            $enrollSent = false;
-            try {
-                $enrollSent = $zk->startFingerprintEnroll($uid, $fingerId);
-            } catch (\Exception $e) {}
-
-            // 4. عرض رسالة على شاشة الجهاز
-            try {
-                $zk->writeLCD(2, "ضع بصمة الاصبع");
-                $zk->writeLCD(3, "للمستخدم: " . substr($name, 0, 14));
-            } catch (\Exception $e) {}
-
-            $zk->disconnect();
-
-            return response()->json([
-                'success' => true,
-                'enrolled_on_device' => false,
-                'manual_required' => true,
-                'enroll_command_sent' => $enrollSent,
-                'message' => "تم إنشاء المستخدم $name على الجهاز.\n"
-                    . ($enrollSent ? "تم إرسال أمر التسجيل للجهاز.\n" : "")
-                    . "⚠️ جهاز K40 لا يدعم التسجيل عن بعد.\n"
-                    . "الرجاء التوجه إلى الجهاز، ادخل قائمة المستخدمين،\n"
-                    . "اختر '$name'، ثم سجل بصمته.\n"
-                    . "سيتم الكشف عن البصمة تلقائياً خلال 30 ثانية."
-            ]);
-        } catch (\Exception $e) {
-            try { $zk->disconnect(); } catch (\Exception $e2) {}
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage()
-            ], 500);
-        }
-    }
-
-    /**
-     * تسجيل وجه مباشر (Live Enrollment)
-     * POST /attendance-device/{id}/enroll-face
-     */
-    public function enrollFace(Request $request, $id)
-    {
-        $device = AttendanceDevice::findOrFail($id);
-
-        $data = $request->validate([
-            'user_id' => 'required|integer|min:1|max:65535',
-            'name' => 'nullable|string',
-        ]);
-
-        $zk = $this->connect($device);
-        if (!$zk) {
-            return response()->json(['message' => 'Connection failed'], 422);
-        }
-
-        try {
-            $uid = (int)$data['user_id'];
-            $name = mb_strcut($data['name'] ?? $data['user_id'], 0, 24);
-
-            $result = $zk->setUser($uid, (string)$uid, $name, '');
-            if (!$result) {
-                $zk->disconnect();
-                return response()->json(['success' => false, 'message' => 'فشل تسجيل المستخدم على الجهاز'], 500);
-            }
-
-            $enrollSent = false;
-            try {
-                $enrollSent = $zk->startFaceEnroll($uid, 50);
-            } catch (\Exception $e) {}
-
-            try {
-                $zk->writeLCD(2, "سجل الوجه");
-                $zk->writeLCD(3, "للمستخدم: " . substr($name, 0, 14));
-            } catch (\Exception $e) {}
-
-            $zk->disconnect();
-
-            return response()->json([
-                'success' => true,
-                'enrolled_on_device' => false,
-                'manual_required' => true,
-                'enroll_command_sent' => $enrollSent,
-                'message' => "تم إنشاء المستخدم $name على الجهاز.\n"
-                    . ($enrollSent ? "تم إرسال أمر التسجيل.\n" : "")
-                    . "يرجى التوجه للجهاز لتسجيل الوجه"
-            ]);
-        } catch (\Exception $e) {
-            try { $zk->disconnect(); } catch (\Exception $e2) {}
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage()
-            ], 500);
-        }
-    }
 
     public function downloadFaceData($id, $employeeId = null)
     {
@@ -829,161 +683,7 @@ class AttendanceDeviceController extends Controller
      * إذا تم العثور على بصمة/وجه، يتم تحميل القالب وإرجاعه
      * POST /attendance-device/{id}/check-enrollment
      */
-    public function checkEnrollment(Request $request, $id)
-    {
-        $device = AttendanceDevice::findOrFail($id);
-        $data = $request->validate([
-            'user_id' => 'required|string',
-            'finger_id' => 'nullable|integer',
-        ]);
 
-        $zk = $this->connect($device);
-        if (!$zk) {
-            return response()->json(['message' => 'Connection failed'], 422);
-        }
-
-        try {
-            $users = $zk->getUser();
-            $found = false;
-            foreach ($users as $user) {
-                if ((string)$user['userid'] === (string)$data['user_id']) {
-                    $found = true;
-                    $uid = $user['uid'];
-                    break;
-                }
-            }
-
-            if (!$found) {
-                $zk->disconnect();
-                return response()->json([
-                    'enrolled' => false,
-                    'template' => null,
-                    'message' => 'المستخدم غير موجود على الجهاز'
-                ]);
-            }
-
-            $fingerprintFound = false;
-            $downloadedTemplate = null;
-            $enrolledFingerId = null;
-
-            if (isset($data['finger_id'])) {
-                $fpData = $zk->getFingerprint($uid);
-                if (!empty($fpData)) {
-                    foreach ($fpData as $fingerId => $template) {
-                        if ((int)$fingerId === (int)$data['finger_id']) {
-                            $fingerprintFound = true;
-                            $downloadedTemplate = base64_encode($template);
-                            $enrolledFingerId = (int)$fingerId;
-                            break;
-                        }
-                    }
-                }
-                if (!$fingerprintFound) {
-                    $faceData = $zk->getFaceData($uid);
-                    if (!empty($faceData)) {
-                        $fingerprintFound = true;
-                        $downloadedTemplate = base64_encode(reset($faceData));
-                    }
-                }
-            } else {
-                $fpData = $zk->getFingerprint($uid);
-                if (!empty($fpData)) {
-                    $fingerprintFound = true;
-                    $fingerId = key($fpData);
-                    $downloadedTemplate = base64_encode($fpData[$fingerId]);
-                    $enrolledFingerId = (int)$fingerId;
-                } else {
-                    $faceData = $zk->getFaceData($uid);
-                    if (!empty($faceData)) {
-                        $fingerprintFound = true;
-                        $downloadedTemplate = base64_encode(reset($faceData));
-                    }
-                }
-            }
-
-            $zk->disconnect();
-
-            if ($fingerprintFound && $downloadedTemplate) {
-                // حاول حفظ القالب في قاعدة البيانات
-                try {
-                    if (isset($data['finger_id']) || $enrolledFingerId !== null) {
-                        $fingerIdToSave = $data['finger_id'] ?? $enrolledFingerId;
-                        // ابحث عن الموظف المرتبط بهذا الـ user_id
-                        $employee = \App\Models\Employee::where('device_user_id', $data['user_id'])->first();
-                        if ($employee) {
-                            \App\Models\Fingerprint::updateOrCreate(
-                                [
-                                    'employee_id' => $employee->id,
-                                    'attendance_device_id' => $device->id,
-                                    'finger_id' => $fingerIdToSave,
-                                ],
-                                [
-                                    'template' => $downloadedTemplate,
-                                    'is_active' => true,
-                                ]
-                            );
-                        }
-                    }
-                } catch (\Exception $dbErr) {
-                    // فشل الحفظ في DB - نرجع القالب عشان الفرنت يحفظه
-                }
-            }
-
-            return response()->json([
-                'enrolled' => $fingerprintFound,
-                'template' => $downloadedTemplate,
-                'uid' => $uid ?? null,
-                'finger_id' => $enrolledFingerId,
-                'message' => $fingerprintFound ? 'تم التسجيل بنجاح' : 'لم يتم التسجيل بعد'
-            ]);
-        } catch (\Exception $e) {
-            try { $zk->disconnect(); } catch (\Exception $e2) {}
-            return response()->json(['enrolled' => false, 'template' => null, 'message' => $e->getMessage()], 500);
-        }
-    }
-
-    /**
-     * تسجيل مستخدم يدوي (فقط إنشاء المستخدم بدون بصمة/وجه)
-     * POST /attendance-device/{id}/register-user-manual
-     */
-    public function registerUserManual(Request $request, $id)
-    {
-        $device = AttendanceDevice::findOrFail($id);
-
-        $data = $request->validate([
-            'user_id' => 'required|integer|min:1|max:65535',
-            'name' => 'nullable|string',
-            'password' => 'nullable|string',
-        ]);
-
-        $zk = $this->connect($device);
-        if (!$zk) {
-            return response()->json(['message' => 'Connection failed'], 422);
-        }
-
-        try {
-            $uid = (int)$data['user_id'];
-            $name = mb_strcut($data['name'] ?? $data['user_id'], 0, 24);
-            $zk->setUser(
-                $uid,
-                (string)$uid,
-                $name,
-                $data['password'] ?? ''
-            );
-            $zk->disconnect();
-
-            return response()->json([
-                'success' => true,
-                'message' => 'تم إنشاء المستخدم على الجهاز بنجاح'
-            ]);
-        } catch (\Exception $e) {
-            try { $zk->disconnect(); } catch (\Exception $e2) {}
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage()
-            ], 500);
-        }
-    }
 
     /**
      * Start auto fingerprint enrollment on device.

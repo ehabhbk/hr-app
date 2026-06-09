@@ -2,8 +2,7 @@
 
 namespace App\Services;
 
-use Rats\Zkteco\Lib\ZKTeco;
-use Rats\Zkteco\Lib\Helper\Util;
+use Jmrashed\Zkteco\Lib\ZKTeco;
 use App\Models\AttendanceDevice;
 use Illuminate\Support\Facades\Log;
 

@@ -101,11 +101,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Biometric enrollment endpoints (used by frontend)
     Route::post('/attendance-device/{id}/register-fingerprint', [AttendanceDeviceController::class, 'registerFingerprint']);
-    Route::post('/attendance-device/{id}/enroll-fingerprint', [AttendanceDeviceController::class, 'enrollFingerprint']);
     Route::post('/attendance-device/{id}/register-face', [AttendanceDeviceController::class, 'registerFace']);
-    Route::post('/attendance-device/{id}/enroll-face', [AttendanceDeviceController::class, 'enrollFace']);
-    Route::post('/attendance-device/{id}/check-enrollment', [AttendanceDeviceController::class, 'checkEnrollment']);
-    Route::post('/attendance-device/{id}/register-user-manual', [AttendanceDeviceController::class, 'registerUserManual']);
 
     Route::get('/attendance-device/{id}/face-data', [AttendanceDeviceController::class, 'downloadFaceData']);
     Route::get('/attendance-device/{id}/face-data/{employeeId}', [AttendanceDeviceController::class, 'downloadFaceData']);
