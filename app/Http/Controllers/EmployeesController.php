@@ -391,17 +391,17 @@ class EmployeesController extends Controller
         $leaves = $employee->leaves ?? [];
         
         foreach ($leaves as $leave) {
-            if ($leave->status === 'approved' && $leave->to_date >= $today && $leave->from_date <= $today) {
+            if ($leave->status === 'approved' && $leave->to_date->format('Y-m-d') >= $today && $leave->from_date->format('Y-m-d') <= $today) {
                 $activeLeave = $leave;
                 break;
             }
         }
 
-        // Calculate remaining vacation days
         $remainingDays = 0;
         if ($activeLeave) {
-            $toDate = new \DateTime($activeLeave->to_date);
-            $remainingDays = max(0, $toDate->diff($now)->days);
+            $toDate = new \DateTime($activeLeave->to_date->format('Y-m-d'));
+            $fromDate = new \DateTime($today);
+            $remainingDays = max(0, $toDate->diff($fromDate)->days);
         }
 
         // Get warnings count from relationship
