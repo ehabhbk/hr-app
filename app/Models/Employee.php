@@ -263,6 +263,16 @@ class Employee extends Model
         return $this->hasMany(Face::class)->where('is_active', true);
     }
 
+    public function evaluations()
+    {
+        return $this->hasMany(EmployeeEvaluation::class);
+    }
+
+    public function latestEvaluation()
+    {
+        return $this->hasOne(EmployeeEvaluation::class)->latestOfMany();
+    }
+
     /* -----------------------------------------------------------------
      | Accessors
      | -----------------------------------------------------------------

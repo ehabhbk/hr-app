@@ -153,6 +153,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/employees/{id}/fingerprints', [EmployeesController::class, 'getFingerprints']);
     Route::post('/employees/{id}/fingerprint', [EmployeesController::class, 'addFingerprint']);
     Route::delete('/employees/{id}/fingerprint/{fingerprintId}', [EmployeesController::class, 'deleteFingerprint']);
+    Route::post('/employees/{id}/evaluate', [EmployeesController::class, 'evaluate']);
 
     /*
     |-----------------------------------------------------------------------

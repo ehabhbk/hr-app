@@ -8,6 +8,7 @@ use App\Models\Loan;
 use App\Models\LoanPayment;
 use App\Models\Leave;
 use App\Models\Warning;
+use App\Models\EmployeeEvaluation;
 use App\Models\AttendanceDeviceLog;
 use App\Models\AttendanceRecord;
 use App\Models\Setting;
@@ -463,6 +464,7 @@ class ReportsController extends Controller
         }
         
         $year = $request->input('year', now()->year);
+        $month = $request->input('month');
         $departmentId = $request->input('department_id');
 
         $query = Employee::with([
@@ -472,7 +474,7 @@ class ReportsController extends Controller
                 $q->whereYear('from_date', $year);
             },
             'shiftAssignments'
-        ])->where('status', 'active');
+        ])->whereIn('status', ['active', 'vacation']);
 
         if ($departmentId) {
             $query->where('department_id', $departmentId);
@@ -485,7 +487,14 @@ class ReportsController extends Controller
             ->get()
             ->groupBy('device_user_id');
 
-        $evaluations = $employees->map(function($emp) use ($year, $attendanceData) {
+        $manualEvals = EmployeeEvaluation::whereIn('employee_id', $employees->pluck('id'));
+        if ($month) {
+            $period = sprintf('%04d-%02d', $year, $month);
+            $manualEvals->where('period', $period);
+        }
+        $manualEvals = $manualEvals->get()->keyBy('employee_id');
+
+        $evaluations = $employees->map(function($emp) use ($year, $attendanceData, $manualEvals) {
             $deviceUserId = $emp->device_user_id ?? $emp->attendance_device_user_id;
             $empAttendance = $attendanceData->get($deviceUserId, collect());
             
@@ -517,6 +526,15 @@ class ReportsController extends Controller
             $warningScore = max(0, 100 - ($warningsCount * 20));
             $totalScore = round(($attendanceScore + $leaveScore + $warningScore) / 3, 2);
 
+            $manualEval = $manualEvals->get($emp->id);
+            $manualStars = $manualEval ? [
+                'appearance' => $manualEval->appearance,
+                'behavior' => $manualEval->behavior,
+                'performance' => $manualEval->performance,
+                'total_score' => $manualEval->total_score,
+                'notes' => $manualEval->notes,
+            ] : null;
+
             return [
                 'id' => $emp->id,
                 'name' => $emp->name,
@@ -533,6 +551,7 @@ class ReportsController extends Controller
                 'leave_score' => $leaveScore,
                 'warning_score' => $warningScore,
                 'total_score' => $totalScore,
+                'manual_evaluation' => $manualStars,
                 'year' => $year,
             ];
         })->sortByDesc('total_score');
@@ -540,14 +559,22 @@ class ReportsController extends Controller
         $bestEmployees = $evaluations->take(5)->values();
         $worstEmployees = $evaluations->sortBy('total_score')->take(5)->values();
 
+        // Find best manual evaluation (الموظف المثالي)
+        $idealEmployee = $evaluations->filter(fn($e) => $e['manual_evaluation'] !== null)
+            ->sortByDesc(fn($e) => $e['manual_evaluation']['total_score'])
+            ->first();
+
         ReportLog::logReport('evaluation', 'تقرير تقييم الموظفين', ['year' => $year]);
 
         return response()->json([
             'best_employees' => $bestEmployees,
             'worst_employees' => $worstEmployees,
             'all_employees' => $evaluations->values(),
+            'ideal_employee' => $idealEmployee,
             'meta' => [
                 'year' => $year,
+                'month' => $month ? (int) $month : null,
+                'period' => $month ? sprintf('%04d-%02d', $year, $month) : sprintf('%04d', $year),
                 'total_employees' => $evaluations->count(),
                 'average_score' => round($evaluations->avg('total_score'), 2),
                 'generated_at' => now()->format('Y-m-d H:i:s'),

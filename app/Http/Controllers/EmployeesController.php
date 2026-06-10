@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Employee;
+use App\Models\EmployeeEvaluation;
 use App\Models\Fingerprint;
 use App\Models\Face;
 use Illuminate\Http\Request;
@@ -357,7 +358,7 @@ class EmployeesController extends Controller
 
     public function show($id)
     {
-        $employee = Employee::with('department', 'attendanceDevice', 'leaves', 'warningsRelation', 'assets', 'incentives')->findOrFail($id);
+        $employee = Employee::with('department', 'attendanceDevice', 'leaves', 'warningsRelation', 'assets', 'incentives', 'latestEvaluation')->findOrFail($id);
 
         // Calculate total salary from database
         $baseSalary = (float) ($employee->base_salary ?? 0);
@@ -482,6 +483,16 @@ class EmployeesController extends Controller
                     'status' => $activeLeave->status,
                     'paid' => $activeLeave->paid,
                     'medical_certificate' => $activeLeave->medical_certificate,
+                ] : null,
+                'evaluation' => $employee->latestEvaluation ? [
+                    'id' => $employee->latestEvaluation->id,
+                    'appearance' => $employee->latestEvaluation->appearance,
+                    'behavior' => $employee->latestEvaluation->behavior,
+                    'performance' => $employee->latestEvaluation->performance,
+                    'total_score' => $employee->latestEvaluation->total_score,
+                    'period' => $employee->latestEvaluation->period,
+                    'notes' => $employee->latestEvaluation->notes,
+                    'created_at' => $employee->latestEvaluation->created_at,
                 ] : null,
             ],
         ]);
@@ -820,6 +831,40 @@ class EmployeesController extends Controller
         return response()->json([
             'data' => null,
             'message' => 'تم حذف البصمة بنجاح',
+        ]);
+    }
+
+    public function evaluate(Request $request, $id)
+    {
+        $employee = Employee::findOrFail($id);
+
+        $data = $request->validate([
+            'appearance' => 'required|integer|min:0|max:10',
+            'behavior' => 'required|integer|min:0|max:10',
+            'performance' => 'required|integer|min:0|max:10',
+            'period' => 'nullable|string|size:7',
+            'notes' => 'nullable|string|max:1000',
+        ]);
+
+        $period = $data['period'] ?? now()->format('Y-m');
+        $totalScore = $data['appearance'] + $data['behavior'] + $data['performance'];
+
+        $evaluation = EmployeeEvaluation::updateOrCreate(
+            ['employee_id' => $employee->id, 'period' => $period],
+            [
+                'appearance' => $data['appearance'],
+                'behavior' => $data['behavior'],
+                'performance' => $data['performance'],
+                'total_score' => $totalScore,
+                'period' => $period,
+                'notes' => $data['notes'] ?? null,
+                'evaluated_by' => $request->user()?->id,
+            ]
+        );
+
+        return response()->json([
+            'data' => $evaluation,
+            'message' => '✅ تم حفظ التقييم بنجاح',
         ]);
     }
 }
