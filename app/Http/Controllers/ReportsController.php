@@ -65,10 +65,16 @@ class ReportsController extends Controller
             $baseSalary = (float) ($emp->base_salary ?? 0);
             $positionAllowance = (float) ($emp->position_allowance ?? 0);
             
-            // Split compensations into fixed (recurring) and one-time (button incentives)
-            $fixedAllowances = $emp->compensations->where('is_recurring', true);
-            $oneTimeIncentives = $emp->compensations->filter(function($item) use ($month, $year) {
+            // Split compensations into fixed (allowances) and one-time (button incentives)
+            $allowanceTypes = ['transport', 'housing', 'food', 'phone', 'education', 'medical'];
+            $fixedAllowances = $emp->compensations->filter(function($item) use ($allowanceTypes) {
+                $type = str_replace('allowance_', '', $item->type);
+                return $item->is_recurring || in_array($type, $allowanceTypes);
+            });
+            $oneTimeIncentives = $emp->compensations->filter(function($item) use ($month, $year, $allowanceTypes) {
+                $type = str_replace('allowance_', '', $item->type);
                 return !$item->is_recurring
+                    && !in_array($type, $allowanceTypes)
                     && $item->date
                     && date('m', strtotime($item->date)) == str_pad($month, 2, '0', STR_PAD_LEFT)
                     && date('Y', strtotime($item->date)) == $year;
@@ -1057,9 +1063,15 @@ class ReportsController extends Controller
         $baseSalary = (float) ($emp->base_salary ?? 0);
         $positionAllowance = (float) ($emp->position_allowance ?? 0);
 
-        $fixedAllowances = $emp->compensations->where('is_recurring', true);
-        $oneTimeIncentives = $emp->compensations->filter(function($item) use ($month, $year) {
+        $allowanceTypes = ['transport', 'housing', 'food', 'phone', 'education', 'medical'];
+        $fixedAllowances = $emp->compensations->filter(function($item) use ($allowanceTypes) {
+            $type = str_replace('allowance_', '', $item->type);
+            return $item->is_recurring || in_array($type, $allowanceTypes);
+        });
+        $oneTimeIncentives = $emp->compensations->filter(function($item) use ($month, $year, $allowanceTypes) {
+            $type = str_replace('allowance_', '', $item->type);
             return !$item->is_recurring
+                && !in_array($type, $allowanceTypes)
                 && $item->date
                 && date('m', strtotime($item->date)) == str_pad($month, 2, '0', STR_PAD_LEFT)
                 && date('Y', strtotime($item->date)) == $year;
