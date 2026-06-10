@@ -31,7 +31,7 @@ class EmployeesController extends Controller
             $user = $request->user();
             $user->load('role');
             
-            $query = Employee::with('department', 'workShift', 'incentives');
+            $query = Employee::with('department', 'workShift', 'incentives', 'leaves');
             
             // Check if user has a department-related role (supervisor or manager of department)
             $roleName = strtolower($user->role->name_ar ?? $user->role->name ?? '');
@@ -71,6 +71,14 @@ class EmployeesController extends Controller
                     })->sum('value') : 0;
                     $totalSalary = $baseSalary + $positionAllowance + $recurringTotal;
 
+                    $today = now()->toDateString();
+                    $activeLeave = $emp->leaves->first(function($leave) use ($today) {
+                        return $leave->status === 'approved'
+                            && $leave->from_date->format('Y-m-d') <= $today
+                            && $leave->to_date->format('Y-m-d') >= $today;
+                    });
+                    $realStatus = $activeLeave ? 'vacation' : ($emp->status === 'vacation' ? 'active' : $emp->status ?? 'active');
+
                     return [
                         'id' => $emp->id,
                         'file_number' => $emp->file_number,
@@ -96,7 +104,7 @@ class EmployeesController extends Controller
                         'base_salary' => $emp->base_salary,
                         'address' => $emp->address,
                         'notes' => $emp->notes,
-                        'status' => $emp->status ?? 'active',
+                        'status' => $realStatus,
                         'warnings_count' => $emp->warnings()->count() ?? 0,
                         'leave_count' => $emp->leave_count ?? 0,
                         'profile_photo' => $emp->profile_photo,
