@@ -552,6 +552,9 @@ class ReportsController extends Controller
                 'warning_score' => $warningScore,
                 'total_score' => $totalScore,
                 'manual_evaluation' => $manualStars,
+                'combined_score' => $manualStars
+                    ? round($totalScore * 0.7 + ($manualStars['total_score'] / 30 * 100) * 0.3, 2)
+                    : round($totalScore * 0.85, 2),
                 'year' => $year,
             ];
         })->sortByDesc('total_score');
@@ -559,10 +562,8 @@ class ReportsController extends Controller
         $bestEmployees = $evaluations->take(5)->values();
         $worstEmployees = $evaluations->sortBy('total_score')->take(5)->values();
 
-        // Find best manual evaluation (الموظف المثالي)
-        $idealEmployee = $evaluations->filter(fn($e) => $e['manual_evaluation'] !== null)
-            ->sortByDesc(fn($e) => $e['manual_evaluation']['total_score'])
-            ->first();
+        // الموظف المثالي: أعلى combined_score (انضباط + حضور + إنذارات + إجازات + نجوم التقييم)
+        $idealEmployee = $evaluations->sortByDesc(fn($e) => $e['combined_score'])->first();
 
         ReportLog::logReport('evaluation', 'تقرير تقييم الموظفين', ['year' => $year]);
 
