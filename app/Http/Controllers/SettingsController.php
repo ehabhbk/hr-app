@@ -308,6 +308,8 @@ class SettingsController extends Controller
             'annual_days' => 21,
             'sick_days' => 10,
             'maternity_days' => 90,
+            'hajj_days' => 14,
+            'unpaid_leave_max_days' => 30,
             'notice_days' => 3,
             'by_grade' => [],
         ];

@@ -910,6 +910,7 @@ class ReportsController extends Controller
                 'created_at' => $l->created_at,
                 'approved_by' => $l->approved_by ?? '-',
                 'approved_at' => $l->approved_at ?? '-',
+                'attachment_url' => $l->attachment ? url('storage/' . $l->attachment) : null,
             ])->toArray(),
             'warnings_summary' => [
                 'total_count' => $employee->warningsRelation->count(),

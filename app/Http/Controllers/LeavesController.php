@@ -12,58 +12,53 @@ class LeavesController extends Controller
 {
     public function index()
     {
-        return response()->json(['data' => Leave::with('employee')->orderBy('created_at', 'desc')->get()]);
+        $leaves = Leave::with('employee')->orderBy('created_at', 'desc')->get();
+        $leaves->map(fn($l) => $l->attachment_url = $l->attachment ? url('storage/' . $l->attachment) : null);
+        return response()->json(['data' => $leaves]);
     }
 
     public function store(Request $r)
     {
         $data = $r->validate([
             'employee_id' => 'required|exists:employees,id',
-            'type' => 'required|string',
+            'type' => 'required|in:official,sick,maternity,hajj,unpaid',
             'from_date' => 'required|date',
             'to_date' => 'required|date|after_or_equal:from_date',
             'note' => 'nullable|string',
             'paid' => 'nullable|boolean',
-            'medical_certificate' => 'nullable|file|mimes:pdf,jpg,jpeg,png',
+            'attachment' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:5120',
         ]);
 
         $employee = Employee::find($r->employee_id);
         $days = (new \DateTime($data['from_date']))->diff(new \DateTime($data['to_date']))->days + 1;
 
-        // Get leave settings
         $leaveSettings = \App\Models\Setting::where('key', 'leaves')->first();
         $settings = $leaveSettings ? $leaveSettings->value : [
             'annual_days' => 21,
             'sick_days' => 10,
             'maternity_days' => 90,
+            'hajj_days' => 14,
+            'unpaid_leave_max_days' => 30,
             'notice_days' => 3,
         ];
 
-        // Validate based on leave type
         $leaveType = $data['type'];
         $maxDays = match($leaveType) {
             'official' => $settings['annual_days'] ?? 21,
             'sick' => $settings['sick_days'] ?? 10,
             'maternity' => $settings['maternity_days'] ?? 90,
+            'hajj' => $settings['hajj_days'] ?? 14,
+            'unpaid' => $settings['unpaid_leave_max_days'] ?? 30,
             default => $settings['annual_days'] ?? 21,
         };
 
-        // Check if employee has enough leave days remaining
-        $usedDays = Leave::where('employee_id', $employee->id)
-            ->where('status', '!=', 'rejected')
-            ->whereYear('created_at', now()->year)
-            ->sum('days');
-
-        $remainingDays = $maxDays - $usedDays;
-
-        if ($days > $remainingDays && $leaveType !== 'sick') {
+        if ($days > $maxDays) {
             return response()->json([
-                'message' => "لا يمكنك طلب {$days} أيام. يتبقى لديك {$remainingDays} يوم إجازة فقط من أصل {$maxDays} يوم",
-                'error' => 'insufficient_leave_days'
+                'message' => "أقصى حد مسموح لهذا النوع من الإجازة هو {$maxDays} يوم. لا يمكنك طلب {$days} أيام.",
+                'error' => 'exceeds_max_days'
             ], 422);
         }
 
-        // Check if employee already has a pending leave request
         $pendingLeave = Leave::where('employee_id', $employee->id)
             ->where('status', 'pending')
             ->first();
@@ -75,7 +70,6 @@ class LeavesController extends Controller
             ], 422);
         }
 
-        // Check notice days for official leave
         if ($leaveType === 'official') {
             $noticeDays = $settings['notice_days'] ?? 3;
             $fromDate = new \DateTime($data['from_date']);
@@ -93,13 +87,13 @@ class LeavesController extends Controller
         $leaveData = [
             'days' => $days,
             'status' => 'pending',
-            'paid' => $r->boolean('paid', true),
+            'paid' => $leaveType === 'unpaid' ? false : $r->boolean('paid', true),
         ];
 
-        if ($r->hasFile('medical_certificate')) {
-            $file = $r->file('medical_certificate');
-            $path = $file->store('medical_certificates', 'public');
-            $leaveData['medical_certificate'] = $path;
+        if ($r->hasFile('attachment')) {
+            $file = $r->file('attachment');
+            $path = $file->store('leave-attachments', 'public');
+            $leaveData['attachment'] = $path;
         }
 
         $leave = Leave::create(array_merge($data, $leaveData));

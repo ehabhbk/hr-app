@@ -21,6 +21,7 @@ class Leave extends Model
         'note',
         'paid',
         'medical_certificate',
+        'attachment',
     ];
 
     protected $casts = [
