@@ -153,6 +153,18 @@ class AdvancesController extends Controller
             $installments = max($minInstallments, min($installments, $maxInstallments));
         }
 
+        // For long advances: validate that amount <= grossSalary * installments
+        if ($type === 'long' && $grossSalary > 0) {
+            $maxAffordable = $grossSalary * $installments;
+            if ($data['amount'] > $maxAffordable) {
+                $requiredMonths = (int)ceil($data['amount'] / $grossSalary);
+                return response()->json([
+                    'message' => "المبلغ أكبر من راتبك في مدة التقسيط. يجب أن تكون مدة التقسيط {$requiredMonths} شهر أو أكثر (المرتب: {$grossSalary} ج.س × عدد الأقساط ≥ {$data['amount']} ج.س)",
+                    'error' => 'installment_insufficient'
+                ], 422);
+            }
+        }
+
         // Handle file upload
         $attachmentPath = null;
         if ($r->hasFile('attachment')) {
