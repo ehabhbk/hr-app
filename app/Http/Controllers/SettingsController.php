@@ -330,13 +330,10 @@ class SettingsController extends Controller
             'short_advance' => [
                 'enabled' => true,
                 'max_percent' => 50,
-                'max_amount' => 50000,
                 'min_service_months' => 0,
-                'deduction_percent' => 100,
             ],
             'long_advance' => [
                 'enabled' => true,
-                'max_percent' => 100,
                 'max_amount' => 500000,
                 'min_amount' => 10000,
                 'min_service_months' => 6,

@@ -12,7 +12,11 @@ class AdvancesController extends Controller
 {
     public function index()
     {
-        return response()->json(['data' => AdvanceRequest::with('employee')->orderBy('created_at', 'desc')->get()]);
+        $advances = AdvanceRequest::with('employee')->orderBy('created_at', 'desc')->get()->map(function ($a) {
+            $a->attachment_url = $a->attachment ? url('storage/' . $a->attachment) : null;
+            return $a;
+        });
+        return response()->json(['data' => $advances]);
     }
 
     public function store(Request $r)
@@ -23,6 +27,7 @@ class AdvancesController extends Controller
             'type' => 'required|string|in:short,long',
             'installments' => 'nullable|integer|min:1',
             'note' => 'nullable|string',
+            'attachment' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:5120',
         ]);
 
         $employee = Employee::find($data['employee_id']);
@@ -35,14 +40,11 @@ class AdvancesController extends Controller
         $shortSettings = $allSettings['short_advance'] ?? [
             'enabled' => true,
             'max_percent' => 50,
-            'max_amount' => 50000,
             'min_service_months' => 0,
-            'deduction_percent' => 100,
         ];
         
         $longSettings = $allSettings['long_advance'] ?? [
             'enabled' => true,
-            'max_percent' => 100,
             'max_amount' => 500000,
             'min_amount' => 10000,
             'min_service_months' => 6,
@@ -69,15 +71,17 @@ class AdvancesController extends Controller
             ], 422);
         }
 
-        // Calculate max advance amount based on percentage of gross salary
+        // Calculate max advance amount
         $baseSalary = (float) ($employee->base_salary ?? 0);
         $positionAllowance = (float) ($employee->position_allowance ?? 0);
-        // Calculate gross salary (base + position allowance)
         $grossSalary = $baseSalary + $positionAllowance;
-        $maxPercent = $typeSettings['max_percent'] ?? ($type === 'short' ? 50 : 100);
-        $maxAmountByPercent = ($grossSalary * $maxPercent) / 100;
-        $maxAmountSetting = $typeSettings['max_amount'] ?? ($type === 'short' ? 50000 : 500000);
-        $maxAmount = min($maxAmountByPercent, $maxAmountSetting);
+
+        if ($type === 'short') {
+            $maxPercent = $shortSettings['max_percent'] ?? 50;
+            $maxAmount = ($grossSalary * $maxPercent) / 100;
+        } else {
+            $maxAmount = $longSettings['max_amount'] ?? 500000;
+        }
 
         // Check minimum service months (not required for short advances)
         if ($type === 'long' && $employee && $employee->hire_date) {
@@ -106,8 +110,11 @@ class AdvancesController extends Controller
         }
 
         if ($data['amount'] > $maxAmount) {
+            $msg = $type === 'short'
+                ? "الحد الأقصى للسلفة {$maxPercent}% من إجمالي المرتب = {$maxAmount} ج.س"
+                : "الحد الأقصى للسلفة {$maxAmount} ج.س";
             return response()->json([
-                'message' => "الحد الأقصى للسلفة {$maxAmountSetting} ج.س (أو {$maxPercent}% من إجمالي المرتب = {$maxAmountByPercent} ج.س). الحد الأقصى المسموح: {$maxAmount} ج.س",
+                'message' => $msg,
                 'error' => 'amount_exceeds_max'
             ], 422);
         }
@@ -146,12 +153,19 @@ class AdvancesController extends Controller
             $installments = max($minInstallments, min($installments, $maxInstallments));
         }
 
+        // Handle file upload
+        $attachmentPath = null;
+        if ($r->hasFile('attachment')) {
+            $attachmentPath = $r->file('attachment')->store('advance-attachments', 'public');
+        }
+
         $advance = AdvanceRequest::create([
             'employee_id' => $data['employee_id'],
             'amount' => $data['amount'],
             'type' => $type,
             'installments' => $installments,
             'note' => $data['note'] ?? null,
+            'attachment' => $attachmentPath,
             'remaining_amount' => $data['amount'],
             'status' => 'pending',
         ]);

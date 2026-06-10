@@ -942,6 +942,7 @@ class ReportsController extends Controller
             'advances' => $employee->advances->map(fn($a) => [
                 'id' => $a->id,
                 'amount' => (float) $a->amount,
+                'type' => $a->type ?? 'short',
                 'reason' => $a->reason ?? '-',
                 'date' => $a->date,
                 'status' => $a->status ?? '-',
@@ -950,6 +951,9 @@ class ReportsController extends Controller
                 'paid_installments' => $a->paid_installments ?? 0,
                 'remaining_amount' => (float) ($a->remaining_amount ?? 0),
                 'total_paid' => ($a->paid_installments ?? 0) * ($a->monthly_installment ?? 0),
+                'note' => $a->note ?? '',
+                'attachment' => $a->attachment,
+                'attachment_url' => $a->attachment ? url('storage/' . $a->attachment) : null,
                 'approved_by' => $a->approved_by ?? '-',
                 'approved_at' => $a->approved_at ?? '-',
                 'created_at' => $a->created_at,

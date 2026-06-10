@@ -11,7 +11,7 @@ class AdvanceRequest extends Model
 
     protected $table = 'advances_requests';
 
-    protected $fillable = ['employee_id', 'amount', 'status', 'type', 'installments', 'date', 'note', 'remaining_amount', 'paid_amount', 'monthly_installment'];
+    protected $fillable = ['employee_id', 'amount', 'status', 'type', 'installments', 'date', 'note', 'attachment', 'remaining_amount', 'paid_amount', 'monthly_installment'];
 
     public function employee()
     {
