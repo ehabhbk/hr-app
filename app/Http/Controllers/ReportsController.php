@@ -50,36 +50,7 @@ class ReportsController extends Controller
         $currency = $salaryData['default_currency'] ?? 'SDG';
         $currencyLabel = $salaryData['currency_symbol'] ?? 'جنيه سوداني';
 
-        $query = Employee::with([
-            'department',
-            'compensations' => function($q) {
-                // ALL records (fixed + one-time), no month filter — we split by is_recurring in PHP
-                $q->orderBy('created_at', 'desc');
-            },
-            'advances' => function($q) use ($month, $year) {
-                // Short advances: only current month
-                // Long advances: all approved with remaining > 0 (deduct monthly)
-                $q->where(function($sub) use ($month, $year) {
-                    $sub->where('status', 'approved')
-                        ->where('remaining_amount', '>', 0)
-                        ->where('type', 'long');
-                })->orWhere(function($sub) use ($month, $year) {
-                    $sub->where('status', 'approved')
-                        ->where('remaining_amount', '>', 0)
-                        ->where('type', 'short')
-                        ->whereMonth('date', $month)
-                        ->whereYear('date', $year);
-                });
-            },
-            'deductions' => function($q) use ($month, $year) {
-                // One-time button deductions: current month only
-                $q->whereMonth('date', $month)->whereYear('date', $year);
-            },
-            'attendanceRecords' => function($q) use ($month, $year) {
-                $q->whereMonth('date', $month)
-                  ->whereYear('date', $year);
-            },
-        ])->where('status', 'active');
+        $query = Employee::with(self::salaryRelations($month, $year))->where('status', 'active');
 
         if ($departmentId) {
             $query->where('department_id', $departmentId);
@@ -1049,5 +1020,138 @@ class ReportsController extends Controller
         ];
 
         return response()->json($data);
+    }
+
+    public static function salaryRelations(int $month, int $year): array
+    {
+        return [
+            'department',
+            'compensations' => function($q) {
+                $q->orderBy('created_at', 'desc');
+            },
+            'advances' => function($q) use ($month, $year) {
+                $q->where(function($sub) use ($month, $year) {
+                    $sub->where('status', 'approved')
+                        ->where('remaining_amount', '>', 0)
+                        ->where('type', 'long');
+                })->orWhere(function($sub) use ($month, $year) {
+                    $sub->where('status', 'approved')
+                        ->where('remaining_amount', '>', 0)
+                        ->where('type', 'short')
+                        ->whereMonth('date', $month)
+                        ->whereYear('date', $year);
+                });
+            },
+            'deductions' => function($q) use ($month, $year) {
+                $q->whereMonth('date', $month)->whereYear('date', $year);
+            },
+            'attendanceRecords' => function($q) use ($month, $year) {
+                $q->whereMonth('date', $month)
+                  ->whereYear('date', $year);
+            },
+        ];
+    }
+
+    public static function computeEmployeeSalary($emp, int $month, int $year): array
+    {
+        $baseSalary = (float) ($emp->base_salary ?? 0);
+        $positionAllowance = (float) ($emp->position_allowance ?? 0);
+
+        $fixedAllowances = $emp->compensations->where('is_recurring', true);
+        $oneTimeIncentives = $emp->compensations->filter(function($item) use ($month, $year) {
+            return !$item->is_recurring
+                && $item->date
+                && date('m', strtotime($item->date)) == str_pad($month, 2, '0', STR_PAD_LEFT)
+                && date('Y', strtotime($item->date)) == $year;
+        });
+
+        $totalAllowances = (float) $fixedAllowances->sum('value');
+        $totalIncentives = array_sum($oneTimeIncentives->pluck('value')->toArray());
+        $grossSalary = $baseSalary + $positionAllowance + $totalAllowances + $totalIncentives;
+
+        $insuranceAmount = (float) ($emp->insurance_amount ?? 0);
+        $otherDeductions = (float) $emp->deductions->sum('amount');
+
+        $attendanceDeductions = $emp->attendanceRecords
+            ->filter(function($record) {
+                return $record->deduction_applied || ($record->total_deduction ?? 0) > 0;
+            })
+            ->sum('total_deduction');
+
+        // Advance settings
+        $advanceSettings = Setting::where('key', 'advances')->first();
+        $advanceConfig = $advanceSettings ? $advanceSettings->value : [];
+        $shortAdvanceConfig = $advanceConfig['short_advance'] ?? [];
+        $shortDeductionPercent = (float)($shortAdvanceConfig['deduction_percent'] ?? 100) / 100;
+        $shortMaxPercent = (float)($shortAdvanceConfig['max_percent'] ?? 50) / 100;
+
+        $totalAdvanceDeduction = 0;
+        foreach ($emp->advances as $advance) {
+            if (($advance->remaining_amount ?? 0) <= 0) continue;
+            if ($advance->status !== 'approved') continue;
+
+            $remainingAmount = (float) ($advance->remaining_amount ?? 0);
+            $monthlyInstallment = (float) ($advance->monthly_installment ?? 0);
+            $isLongTerm = $advance->type === 'long';
+
+            $deductAmount = 0;
+            if ($isLongTerm) {
+                $deductAmount = min($monthlyInstallment, $remainingAmount);
+            } else {
+                $maxDeduction = min(
+                    $grossSalary * $shortDeductionPercent,
+                    $grossSalary * $shortMaxPercent
+                );
+                $deductAmount = min($maxDeduction, $remainingAmount);
+            }
+            $totalAdvanceDeduction += $deductAmount;
+        }
+
+        $actualAdvanceDeduction = min($totalAdvanceDeduction, max(0, $grossSalary - $insuranceAmount - $otherDeductions - $attendanceDeductions));
+
+        // Tax
+        $tax = self::calculateTax($baseSalary);
+
+        $netSalary = $grossSalary - $insuranceAmount - $otherDeductions - $attendanceDeductions - $actualAdvanceDeduction - $tax;
+
+        return [
+            'base_salary' => $baseSalary,
+            'gross_salary' => $grossSalary,
+            'insurance_amount' => $insuranceAmount,
+            'deductions' => $otherDeductions,
+            'attendance_deductions' => $attendanceDeductions,
+            'advance_deductions' => $actualAdvanceDeduction,
+            'income_tax' => $tax,
+            'net_salary' => $netSalary,
+        ];
+    }
+
+    private static function calculateTax($monthlySalary): float
+    {
+        $brackets = self::getTaxBracketData();
+        $tax = 0;
+        $previousLimit = 0;
+
+        foreach ($brackets as $bracket) {
+            $min = $bracket['min'] ?? 0;
+            $max = $bracket['max'] ?? PHP_FLOAT_MAX;
+            $rate = $bracket['rate'] ?? 0;
+
+            if ($monthlySalary > $min) {
+                $taxable = min($monthlySalary, $max) - max($min, $previousLimit);
+                $tax += $taxable * ($rate / 100);
+            }
+            $previousLimit = $max;
+        }
+
+        return round($tax, 2);
+    }
+
+    private static function getTaxBracketData(): array
+    {
+        $raw = \DB::table('settings')->where('key', 'tax-brackets')->value('value');
+        if ($raw === null) return [];
+        $data = is_array($raw) ? $raw : (is_array(json_decode($raw, true)) ? json_decode($raw, true) : []);
+        return $data['brackets'] ?? $data;
     }
 }

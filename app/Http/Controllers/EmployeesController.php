@@ -113,6 +113,8 @@ class EmployeesController extends Controller
                         'cv_url' => $emp->cv_url,
                         'salary' => $emp->base_salary,
                         'total_salary' => $totalSalary,
+                        'bank_name' => $emp->bank_name ?? '',
+                        'bank_account' => $emp->bank_account ?? '',
                     ];
                 }),
             ]);

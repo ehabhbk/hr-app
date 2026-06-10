@@ -379,6 +379,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/bank-exports/banks', [BankExportController::class, 'getBanks']);
     Route::post('/bank-exports/generate', [BankExportController::class, 'generate']);
     Route::get('/bank-exports/{id}/download', [BankExportController::class, 'download']);
+    Route::get('/bank-exports/{id}/pdf', [BankExportController::class, 'downloadPdf']);
     Route::delete('/bank-exports/{id}', [BankExportController::class, 'destroy']);
 
     /*
