@@ -960,14 +960,14 @@ class ReportsController extends Controller
                 'active_count' => $employee->warningsRelation->where('status', 'active')->count(),
                 'resolved_count' => $employee->warningsRelation->where('status', 'resolved')->count(),
             ],
-            'warnings' => $employee->warningsRelation->map(fn($w) => [
+            'warnings' => $employee->warningsRelation->load('creator')->map(fn($w) => [
                 'id' => $w->id,
                 'type' => $w->type ?? '-',
                 'reason' => $w->reason ?? '-',
                 'date' => $w->date,
                 'status' => $w->status ?? '-',
                 'notes' => $w->notes ?? '-',
-                'created_by' => $w->created_by ?? '-',
+                'created_by' => $w->creator?->full_name ?? $w->created_by ?? '-',
                 'created_at' => $w->created_at,
             ])->toArray(),
             'advances_summary' => [
@@ -987,7 +987,7 @@ class ReportsController extends Controller
                 'amount' => (float) $a->amount,
                 'type' => $a->type ?? 'short',
                 'reason' => $a->reason ?? '-',
-                'date' => $a->date,
+                'date' => $a->date ?? $a->created_at?->format('Y-m-d'),
                 'status' => $a->status ?? '-',
                 'installment_count' => $a->installment_count ?? 0,
                 'monthly_installment' => (float) ($a->monthly_installment ?? 0),

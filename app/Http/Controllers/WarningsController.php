@@ -12,7 +12,11 @@ class WarningsController extends Controller
 {
     public function index()
     {
-        return response()->json(['data' => Warning::with('employee')->orderBy('created_at', 'desc')->get()]);
+        return response()->json(['data' => Warning::with(['employee', 'creator'])->orderBy('created_at', 'desc')->get()->map(function($w) {
+            return array_merge($w->toArray(), [
+                'created_by_name' => $w->creator?->full_name ?? $w->created_by ?? '-',
+            ]);
+        })]);
     }
 
     public function store(Request $r)
@@ -26,6 +30,7 @@ class WarningsController extends Controller
 
         $data['date'] = now()->format('Y-m-d');
         $data['status'] = 'active';
+        $data['created_by'] = auth()->id();
         
         $w = Warning::create($data);
 
@@ -61,20 +66,8 @@ class WarningsController extends Controller
         }
         
         $warning = Warning::findOrFail($id);
-        $employeeId = $warning->employee_id;
-        $warning->delete();
+        $warning->update(['status' => 'resolved']);
 
-        $employee = Employee::find($employeeId);
-        if ($employee) {
-            $warningsCount = Warning::where('employee_id', $employeeId)->count();
-            $employee->warnings = $warningsCount;
-
-            if ($warningsCount === 0) {
-                $employee->status = 'active';
-            }
-            $employee->save();
-        }
-
-        return response()->json(['message' => 'تم إلغاء الإنذار بنجاح']);
+        return response()->json(['message' => 'تم حل الإنذار بنجاح']);
     }
 }

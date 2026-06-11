@@ -11,10 +11,15 @@ class Warning extends Model
 
     protected $table = 'warnings';
 
-    protected $fillable = ['employee_id', 'type', 'reason', 'note', 'date', 'status'];
+    protected $fillable = ['employee_id', 'type', 'reason', 'note', 'date', 'status', 'created_by'];
 
     public function employee()
     {
         return $this->belongsTo(Employee::class);
+    }
+
+    public function creator()
+    {
+        return $this->belongsTo(User::class, 'created_by');
     }
 }

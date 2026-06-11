@@ -368,7 +368,7 @@ class EmployeesController extends Controller
 
     public function show($id)
     {
-        $employee = Employee::with('department', 'attendanceDevice', 'leaves', 'warningsRelation', 'assets', 'incentives', 'latestEvaluation')->findOrFail($id);
+        $employee = Employee::with('department', 'attendanceDevice', 'leaves', 'warningsRelation.creator', 'assets', 'incentives', 'latestEvaluation')->findOrFail($id);
 
         // Calculate total salary from database
         $baseSalary = (float) ($employee->base_salary ?? 0);
@@ -481,7 +481,11 @@ class EmployeesController extends Controller
                         'returned_date' => $asset->return_date ?? null,
                     ];
                 }),
-                'warnings' => $warnings,
+                'warnings' => collect($warnings)->map(function($w) {
+                    return array_merge($w->toArray(), [
+                        'created_by_name' => $w->creator?->full_name ?? $w->created_by ?? '-',
+                    ]);
+                }),
                 'warnings_count' => $warningsCount,
                 'leave_count' => $employee->leave_count ?? 0,
                 'active_leave' => $activeLeave ? [

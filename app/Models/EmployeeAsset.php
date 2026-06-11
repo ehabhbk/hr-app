@@ -46,4 +46,14 @@ class EmployeeAsset extends Model
             'lost' => 'فقود',
         ][$this->status] ?? $this->status;
     }
+
+    public function getReceivedDateAttribute()
+    {
+        return $this->issue_date;
+    }
+
+    public function getReturnedDateAttribute()
+    {
+        return $this->return_date;
+    }
 }
