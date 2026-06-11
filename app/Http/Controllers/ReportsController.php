@@ -50,7 +50,7 @@ class ReportsController extends Controller
         $currency = $salaryData['default_currency'] ?? 'SDG';
         $currencyLabel = $salaryData['currency_symbol'] ?? 'جنيه سوداني';
 
-        $query = Employee::with(self::salaryRelations($month, $year))->where('status', 'active');
+        $query = Employee::with(self::salaryRelations($month, $year))->whereIn('status', ['active', 'vacation']);
 
         if ($departmentId) {
             $query->where('department_id', $departmentId);
