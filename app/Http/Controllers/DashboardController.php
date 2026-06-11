@@ -304,18 +304,49 @@ class DashboardController extends Controller
 
     private function countLateArrivals($date)
     {
-        $expectedTime = '08:00:00';
+        $dateStr = $date instanceof Carbon ? $date->format('Y-m-d') : $date;
 
-        return AttendanceDeviceLog::whereDate('timestamp', $date)
-            ->get()
-            ->filter(function($log) use ($expectedTime) {
-                if (!$log->timestamp) return false;
-                $actualTime = $log->timestamp instanceof Carbon
-                    ? $log->timestamp->format('H:i:s')
-                    : date('H:i:s', strtotime($log->timestamp));
-                return $actualTime > $expectedTime;
-            })
+        // Use attendance_records which already have check_in_type calculated by processing
+        $lateRecords = AttendanceRecord::whereDate('date', $dateStr)
+            ->where('check_in_type', 'late')
             ->count();
+
+        if ($lateRecords > 0) return $lateRecords;
+
+        // Fallback: use raw device logs - group by device_user_id, take first log only
+        $logs = AttendanceDeviceLog::whereDate('timestamp', $dateStr)
+            ->orderBy('timestamp')
+            ->get()
+            ->groupBy('device_user_id');
+
+        $lateCount = 0;
+        foreach ($logs as $userId => $userLogs) {
+            $firstLog = $userLogs->first();
+            if (!$firstLog || !$firstLog->timestamp) continue;
+
+            $logTime = $firstLog->timestamp instanceof Carbon
+                ? $firstLog->timestamp
+                : Carbon::parse($firstLog->timestamp);
+
+            // Get employee to check shift start time
+            $employee = Employee::where('device_user_id', $userId)->first();
+            if (!$employee) continue;
+
+            $expectedTime = '08:00';
+            if ($employee->work_shift_id) {
+                $shift = \App\Models\WorkShift::find($employee->work_shift_id);
+                if ($shift && $shift->start_time) {
+                    $expectedTime = $shift->start_time;
+                }
+            }
+
+            $expected = Carbon::parse($dateStr . ' ' . $expectedTime);
+            if ($logTime->gt($expected)) {
+                $lateCount++;
+            }
+        }
+
+        return $lateCount;
     }
 
     private function getRecentActivities()
