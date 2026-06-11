@@ -346,7 +346,7 @@ class AttendanceRecordController extends Controller
         $record->expected_hours = $expectedHours;
         
         // Calculate total deduction
-        $record->total_deduction = ($record->delay_deduction ?? 0) + ($record->early_leave_deduction ?? 0);
+        $record->total_deduction = ($record->delay_deduction ?? 0) + ($record->early_leave_deduction ?? 0) + ($record->absence_deduction ?? 0);
         
         // Issue warning if late count >= delay_before_warning threshold
         if ($record->has_delay && !$record->delay_excused && $lateCount >= $delayBeforeWarning && !$record->warning_issued) {
@@ -369,6 +369,91 @@ class AttendanceRecordController extends Controller
         }
         
         $record->save();
+    }
+
+    // Calculate absences for employees with shifts
+    public function calculateAbsencesForPeriod($fromDate, $toDate)
+    {
+        $tz = 'Africa/Khartoum';
+        $employees = Employee::whereNotNull('work_shift_id')->with('workShift', 'leaves')->get();
+        $settings = Setting::where('key', 'attendance')->first();
+        $attendanceSettings = $settings ? $settings->value : [];
+
+        $processed = 0;
+
+        foreach ($employees as $employee) {
+            $shift = $employee->workShift;
+            if (!$shift || !$shift->week_days || !is_array($shift->week_days)) continue;
+
+            $workDays = $shift->week_days;
+            $dailyHours = $shift->daily_hours ?? 8;
+            $startDate = Carbon::parse($fromDate);
+            $endDate = Carbon::parse($toDate);
+
+            for ($date = $startDate->copy(); $date->lte($endDate); $date->addDay()) {
+                $dayOfWeek = (int) $date->format('w'); // 0=Sunday, 6=Saturday
+                if (!in_array($dayOfWeek, $workDays)) continue;
+
+                $dateStr = $date->format('Y-m-d');
+
+                // Skip if employee has approved leave covering this day
+                $activeLeave = $employee->leaves->first(function($leave) use ($dateStr) {
+                    return $leave->status === 'approved'
+                        && $leave->from_date->format('Y-m-d') <= $dateStr
+                        && $leave->to_date->format('Y-m-d') >= $dateStr;
+                });
+                if ($activeLeave) continue;
+
+                // Find existing attendance record
+                $record = AttendanceRecord::where('employee_id', $employee->id)
+                    ->where('date', $dateStr)
+                    ->first();
+
+                if ($record) {
+                    // If already has check-in/out or already marked absent, skip
+                    if ($record->check_in_time || $record->check_out_time || $record->is_absent) continue;
+                    // Mark existing record as absent
+                }
+
+                // Calculate absence deduction
+                $baseSalary = (float) ($employee->base_salary ?? 0);
+                $positionAllowance = (float) ($employee->position_allowance ?? 0);
+                $transportAllowance = (float) ($employee->transport_allowance ?? 0);
+                $housingAllowance = (float) ($employee->housing_allowance ?? 0);
+                $foodAllowance = (float) ($employee->food_allowance ?? 0);
+                $grossSalary = $baseSalary + $positionAllowance + $transportAllowance + $housingAllowance + $foodAllowance;
+                $salary = $grossSalary > 0 ? $grossSalary : 1000;
+                $hourlyRate = $salary / 240;
+                $absenceDeduction = round($hourlyRate * $dailyHours, 2);
+
+                AttendanceRecord::updateOrCreate(
+                    ['employee_id' => $employee->id, 'date' => $dateStr],
+                    [
+                        'is_absent' => true,
+                        'absence_days' => 1,
+                        'absence_deduction' => $absenceDeduction,
+                        'absence_excused' => false,
+                        'expected_hours' => $dailyHours,
+                        'total_deduction' => $absenceDeduction,
+                    ]
+                );
+
+                $processed++;
+            }
+        }
+
+        return $processed;
+    }
+
+    public function calculateAbsences(Request $request)
+    {
+        $fromDate = $request->from_date ?? now()->startOfMonth()->format('Y-m-d');
+        $toDate = $request->to_date ?? now()->format('Y-m-d');
+        $count = $this->calculateAbsencesForPeriod($fromDate, $toDate);
+        return response()->json([
+            'message' => "تم احتساب $count يوم غياب",
+            'absences_count' => $count,
+        ]);
     }
 
     // Process attendance from device logs
@@ -443,8 +528,12 @@ class AttendanceRecordController extends Controller
             $results[] = $record;
         }
         
+        // Auto-calculate absences for the same period
+        $absencesCount = $this->calculateAbsencesForPeriod($fromDate, $toDate);
+
         return response()->json([
             'processed' => count($results),
+            'absences_marked' => $absencesCount,
             'records' => $results,
         ]);
     }

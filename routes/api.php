@@ -232,6 +232,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/attendance-records/process-logs', [AttendanceRecordController::class, 'processFromDeviceLogs']);
     Route::get('/attendance-records/monthly-report', [AttendanceRecordController::class, 'monthlyReport']);
     Route::post('/attendance-records/recalculate', [AttendanceRecordController::class, 'recalculateAll']);
+    Route::post('/attendance-records/calculate-absences', [AttendanceRecordController::class, 'calculateAbsences']);
     Route::post('/attendance-records/{id}/excuse', [AttendanceRecordController::class, 'excuseDelay']);
     Route::post('/attendance-records/{id}/excuse-delay', [AttendanceRecordController::class, 'excuseDelay']);
     Route::post('/attendance-records/{id}/excuse-early-leave', [AttendanceRecordController::class, 'excuseEarlyLeave']);

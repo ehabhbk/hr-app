@@ -201,6 +201,7 @@ class ReportsController extends Controller
                 'insurance_amount' => $insuranceAmount,
                 'deductions' => $otherDeductions,
                 'attendance_deductions' => $attendanceDeductions,
+                'absent_days' => $attendanceRecords->where('is_absent', true)->count(),
                 'attendance_details' => [
                     'late_days' => $lateDays,
                     'early_leave_days' => $earlyLeaveDays,
