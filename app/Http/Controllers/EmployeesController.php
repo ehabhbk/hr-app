@@ -65,9 +65,9 @@ class EmployeesController extends Controller
                 'data' => $employees->map(function ($emp) {
                     $baseSalary = (float) ($emp->base_salary ?? 0);
                     $positionAllowance = (float) ($emp->position_allowance ?? 0);
-                    // Only recurring allowances (is_recurring = true), excluding one-time button incentives
+                    // Only allowances (type starts with allowance_), excluding one-time button incentives
                     $recurringTotal = $emp->incentives ? $emp->incentives->filter(function($i) {
-                        return $i->is_recurring ?? str_starts_with($i->type, 'allowance_');
+                        return str_starts_with($i->type, 'allowance_');
                     })->sum('value') : 0;
                     $totalSalary = $baseSalary + $positionAllowance + $recurringTotal;
 
@@ -289,6 +289,7 @@ class EmployeesController extends Controller
                 'type' => 'allowance_' . $type,
                 'value' => $allowance['value'] ?? 0,
                 'note' => $note,
+                'is_recurring' => true,
             ]);
         }
 
@@ -306,6 +307,7 @@ class EmployeesController extends Controller
                 'type' => $type,
                 'value' => $incentive['value'] ?? 0,
                 'note' => $note,
+                'is_recurring' => true,
             ]);
         }
 
@@ -377,19 +379,30 @@ class EmployeesController extends Controller
         
         // Get allowances and incentives from incentives table
         $incentives = $employee->incentives ?? collect();
-        // Split by is_recurring (fallback to type prefix for legacy data)
+        // Split by type prefix: allowance_ = allowance, otherwise incentive
         $allowancesList = $incentives->filter(function($i) {
-            return $i->is_recurring ?? str_starts_with($i->type, 'allowance_');
+            return str_starts_with($i->type, 'allowance_');
+        })->map(function($i) {
+            $cleanType = preg_replace('/^allowance_/', '', $i->type);
+            $i->type = $cleanType;
+            if ($cleanType === 'custom') {
+                $i->custom_name = $i->note;
+            }
+            return $i;
         })->values()->toArray();
         $incentivesList = $incentives->filter(function($i) {
-            return !($i->is_recurring ?? str_starts_with($i->type, 'allowance_'));
+            return !str_starts_with($i->type, 'allowance_');
+        })->values()->toArray();
+        $fixedIncentivesList = $incentives->filter(function($i) {
+            return !str_starts_with($i->type, 'allowance_')
+                && $i->is_recurring !== false;
         })->values()->toArray();
         
         $allowancesTotal = $incentives->filter(function($i) {
-            return $i->is_recurring ?? str_starts_with($i->type, 'allowance_');
+            return str_starts_with($i->type, 'allowance_');
         })->sum('value');
         $incentivesTotal = $incentives->filter(function($i) {
-            return !($i->is_recurring ?? str_starts_with($i->type, 'allowance_'));
+            return !str_starts_with($i->type, 'allowance_');
         })->sum('value');
         
         $insuranceAmount = (float) ($employee->insurance_amount ?? 0);
@@ -676,6 +689,7 @@ class EmployeesController extends Controller
                     'type' => 'allowance_' . $type,
                     'value' => $allowance['value'] ?? 0,
                     'note' => $note,
+                    'is_recurring' => true,
                 ]);
             }
         }
@@ -695,6 +709,7 @@ class EmployeesController extends Controller
                     'type' => $type,
                     'value' => $incentive['value'] ?? 0,
                     'note' => $note,
+                    'is_recurring' => true,
                 ]);
             }
         }

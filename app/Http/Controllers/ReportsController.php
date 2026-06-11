@@ -66,14 +66,21 @@ class ReportsController extends Controller
             $positionAllowance = (float) ($emp->position_allowance ?? 0);
             
             // Split compensations into fixed (allowances) and one-time (button incentives)
-            $allowanceTypes = ['transport', 'housing', 'food', 'phone', 'education', 'medical'];
+            $allowanceTypes = ['transport', 'housing', 'food', 'phone', 'education', 'medical', 'other', 'custom'];
             $fixedAllowances = $emp->compensations->filter(function($item) use ($allowanceTypes) {
                 $type = str_replace('allowance_', '', $item->type);
-                return $item->is_recurring || in_array($type, $allowanceTypes);
+                return str_starts_with($item->type, 'allowance_') || in_array($type, $allowanceTypes);
+            });
+            $fixedIncentives = $emp->compensations->filter(function($item) use ($allowanceTypes) {
+                $type = str_replace('allowance_', '', $item->type);
+                return $item->is_recurring === true
+                    && !str_starts_with($item->type, 'allowance_')
+                    && !in_array($type, $allowanceTypes);
             });
             $oneTimeIncentives = $emp->compensations->filter(function($item) use ($month, $year, $allowanceTypes) {
                 $type = str_replace('allowance_', '', $item->type);
-                return !$item->is_recurring
+                return ($item->is_recurring === null || $item->is_recurring === false)
+                    && !str_starts_with($item->type, 'allowance_')
                     && !in_array($type, $allowanceTypes)
                     && $item->date
                     && date('m', strtotime($item->date)) == str_pad($month, 2, '0', STR_PAD_LEFT)
@@ -87,12 +94,12 @@ class ReportsController extends Controller
             ])->values()->toArray();
             $totalAllowances = (float) $fixedAllowances->sum('value');
 
-            $incentivesList = $oneTimeIncentives->map(fn($i) => [
+            $incentivesList = $fixedIncentives->merge($oneTimeIncentives)->map(fn($i) => [
                 'type' => $i->type,
                 'name' => $this->getIncentiveName($i->type),
                 'amount' => (float) $i->value,
             ])->values()->toArray();
-            $totalIncentives = array_sum(array_column($incentivesList, 'amount'));
+            $totalIncentives = (float) $fixedIncentives->sum('value') + (float) $oneTimeIncentives->sum('value');
             
             // Calculate gross
             $grossSalary = $baseSalary + $positionAllowance + $totalAllowances + $totalIncentives;
@@ -1095,14 +1102,21 @@ class ReportsController extends Controller
         $baseSalary = (float) ($emp->base_salary ?? 0);
         $positionAllowance = (float) ($emp->position_allowance ?? 0);
 
-        $allowanceTypes = ['transport', 'housing', 'food', 'phone', 'education', 'medical'];
+        $allowanceTypes = ['transport', 'housing', 'food', 'phone', 'education', 'medical', 'other', 'custom'];
         $fixedAllowances = $emp->compensations->filter(function($item) use ($allowanceTypes) {
             $type = str_replace('allowance_', '', $item->type);
-            return $item->is_recurring || in_array($type, $allowanceTypes);
+            return str_starts_with($item->type, 'allowance_') || in_array($type, $allowanceTypes);
+        });
+        $fixedIncentives = $emp->compensations->filter(function($item) use ($allowanceTypes) {
+            $type = str_replace('allowance_', '', $item->type);
+            return $item->is_recurring === true
+                && !str_starts_with($item->type, 'allowance_')
+                && !in_array($type, $allowanceTypes);
         });
         $oneTimeIncentives = $emp->compensations->filter(function($item) use ($month, $year, $allowanceTypes) {
             $type = str_replace('allowance_', '', $item->type);
-            return !$item->is_recurring
+            return ($item->is_recurring === null || $item->is_recurring === false)
+                && !str_starts_with($item->type, 'allowance_')
                 && !in_array($type, $allowanceTypes)
                 && $item->date
                 && date('m', strtotime($item->date)) == str_pad($month, 2, '0', STR_PAD_LEFT)
@@ -1110,7 +1124,7 @@ class ReportsController extends Controller
         });
 
         $totalAllowances = (float) $fixedAllowances->sum('value');
-        $totalIncentives = array_sum($oneTimeIncentives->pluck('value')->toArray());
+        $totalIncentives = (float) $fixedIncentives->sum('value') + (float) $oneTimeIncentives->sum('value');
         $grossSalary = $baseSalary + $positionAllowance + $totalAllowances + $totalIncentives;
 
         $insuranceAmount = (float) ($emp->insurance_amount ?? 0);
