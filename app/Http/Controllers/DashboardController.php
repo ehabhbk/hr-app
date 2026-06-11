@@ -154,6 +154,43 @@ class DashboardController extends Controller
             ['label' => 'في إجازة', 'value' => $onLeaveCount, 'color' => '#8B5CF6'],
         ];
 
+        // Rejected leaves by type
+        $rejectedLeaves = Leave::where('status', 'rejected')->selectRaw('type, COUNT(*) as count')
+            ->groupBy('type')->pluck('count', 'type');
+        $rejectedLeavesPie = [];
+        foreach ($leaveLabels as $key => $label) {
+            $rejectedLeavesPie[] = [
+                'label' => $label, 'value' => (int) ($rejectedLeaves[$key] ?? 0),
+                'color' => $leaveColors[$key],
+            ];
+        }
+
+        // Pending leaves by type
+        $pendingLeavesQ = Leave::where('status', 'pending')->selectRaw('type, COUNT(*) as count')
+            ->groupBy('type')->pluck('count', 'type');
+        $pendingLeavesPie = [];
+        foreach ($leaveLabels as $key => $label) {
+            $pendingLeavesPie[] = [
+                'label' => $label, 'value' => (int) ($pendingLeavesQ[$key] ?? 0),
+                'color' => $leaveColors[$key],
+            ];
+        }
+
+        // Leave requests status (approved vs rejected vs pending)
+        $leaveStatusPie = [
+            ['label' => 'موافق عليها', 'value' => Leave::where('status', 'approved')->count(), 'color' => '#10B981'],
+            ['label' => 'مرفوضة', 'value' => Leave::where('status', 'rejected')->count(), 'color' => '#EF4444'],
+            ['label' => 'معلقة', 'value' => Leave::where('status', 'pending')->count(), 'color' => '#F59E0B'],
+        ];
+
+        // All advance requests by type (count)
+        $shortCount = AdvanceRequest::where('type', 'short')->count();
+        $longCount = AdvanceRequest::where('type', 'long')->count();
+        $advancesCountPie = [
+            ['label' => 'سلفة قصيرة', 'value' => $shortCount, 'color' => '#10B981'],
+            ['label' => 'سلفة طويلة', 'value' => $longCount, 'color' => '#3B82F6'],
+        ];
+
         // Departments by employee count
         $depts = DB::table('departments')
             ->leftJoin('employees', 'departments.id', '=', 'employees.department_id')
@@ -234,6 +271,10 @@ class DashboardController extends Controller
                 'departments_employees' => $deptEmployeesPie,
                 'departments_salary' => $deptSalaryPie,
                 'positions' => $positionsPie,
+                'leaves_rejected' => $rejectedLeavesPie,
+                'leaves_pending' => $pendingLeavesPie,
+                'leaves_status' => $leaveStatusPie,
+                'advances_count' => $advancesCountPie,
             ],
             'pending' => [
                 'leaves' => $pendingLeaves,
