@@ -156,10 +156,13 @@ class SettlementController extends Controller
         $html = $this->generateSettlementPdfHtml($org, $settlement, $employee);
         $pdf->writeHTML($html, true, false, true, false, 'R');
         
-        return response($pdf->Output('settlement_' . $employee->name . '.pdf', 'S'), 200, [
-            'Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'attachment; filename="تسوية_' . $employee->name . '.pdf"',
-        ]);
+        $pdfContent = $pdf->Output('settlement_' . $employee->name . '.pdf', 'S');
+        return response($pdfContent, 200)
+            ->header('Content-Type', 'application/octet-stream')
+            ->header('Content-Disposition', 'attachment; filename="تسوية_' . $employee->name . '.pdf"')
+            ->header('Access-Control-Allow-Origin', '*')
+            ->header('Access-Control-Allow-Methods', 'GET, OPTIONS')
+            ->header('Access-Control-Allow-Headers', '*');
     }
 
     private function generateSettlementPdfHtml($org, $settlement, $employee)

@@ -87,10 +87,13 @@ class LettersController extends Controller
         $typeLabel = $this->getLetterTypeLabel($type);
         $filename = "خطاب_{$typeLabel}_{$employee->name}_" . date('Ymd') . ".pdf";
         
-        return response($pdf->Output($filename, 'S'), 200, [
-            'Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
-        ]);
+        $pdfContent = $pdf->Output($filename, 'S');
+        return response($pdfContent, 200)
+            ->header('Content-Type', 'application/octet-stream')
+            ->header('Content-Disposition', 'attachment; filename="' . $filename . '"')
+            ->header('Access-Control-Allow-Origin', '*')
+            ->header('Access-Control-Allow-Methods', 'GET, OPTIONS')
+            ->header('Access-Control-Allow-Headers', '*');
     }
     
     private function generatePdfLetterHtml($data, $content, $org)

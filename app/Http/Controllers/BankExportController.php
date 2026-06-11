@@ -237,10 +237,12 @@ class BankExportController extends Controller
         $filename = "كشف_تحويل_{$export->bank_name}_{$monthLabel}_{$year}.pdf";
         $pdfContent = $pdf->Output($filename, 'S');
 
-        return response($pdfContent, 200, [
-            'Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
-        ]);
+        return response($pdfContent, 200)
+            ->header('Content-Type', 'application/octet-stream')
+            ->header('Content-Disposition', 'attachment; filename="' . $filename . '"')
+            ->header('Access-Control-Allow-Origin', '*')
+            ->header('Access-Control-Allow-Methods', 'GET, OPTIONS')
+            ->header('Access-Control-Allow-Headers', '*');
     }
 
     public function getBanks()

@@ -332,22 +332,35 @@ class PdfExportController extends Controller
             $pdf->SetSubject('كشف المرتبات الشهري');
             
             $pdf->setRTL(true);
-            $pdf->SetFont('arial', '', 10);
+            $pdf->SetFont('dejavusans', '', 10);
             $pdf->SetAutoPageBreak(true, 25);
             
             $pdf->AddPage();
             
             $html = $this->generateDetailedSalaryReportHtml($org, $salaryData, $monthName, $year, $currencySymbol);
+            ob_start();
             $pdf->writeHTML($html, true, false, true, false, 'R');
+            ob_end_clean();
             
-            return response($pdf->Output('salary_report.pdf', 'S'), 200, [
-                'Content-Type' => 'application/pdf',
-                'Content-Disposition' => 'attachment; filename="salary_report_' . $monthName . '_' . $year . '.pdf"',
-            ]);
+            $pdfContent = $pdf->Output('salary_report.pdf', 'S');
+            return response($pdfContent, 200)
+                ->header('Content-Type', 'application/octet-stream')
+                ->header('Content-Disposition', 'attachment; filename="salary_report_' . $monthName . '_' . $year . '.pdf"')
+                ->header('Access-Control-Allow-Origin', '*')
+                ->header('Access-Control-Allow-Methods', 'GET, OPTIONS')
+                ->header('Access-Control-Allow-Headers', '*');
         } catch (\Exception $e) {
             \Illuminate\Support\Facades\Log::error('PDF Export Error: ' . $e->getMessage());
             return response()->json(['error' => 'فشل إنشاء PDF: ' . $e->getMessage()], 500);
         }
+    }
+
+    public function testCors()
+    {
+        return response()->json(['message' => 'CORS test OK'])
+            ->header('Access-Control-Allow-Origin', '*')
+            ->header('Access-Control-Allow-Methods', 'GET, OPTIONS')
+            ->header('Access-Control-Allow-Headers', '*');
     }
 
     public function incomeTaxReport(Request $request)
@@ -381,32 +394,43 @@ class PdfExportController extends Controller
                     'monthly_tax' => $monthlyTax,
                 ];
             }
-            
+
             ob_start();
             $pdf = new \TCPDF('P', 'mm', 'A4', true, 'UTF-8', false);
             ob_end_clean();
-            
+
             $pdf->SetCreator('Jawda HR');
             $pdf->SetAuthor($org['name'] ?? 'Jawda HR');
             $pdf->SetTitle('تقرير ضريبة الدخل');
             $pdf->SetSubject('تقرير ضريبة الدخل السنوي');
             
             $pdf->setRTL(true);
-            $pdf->SetFont('arial', '', 10);
+            $pdf->SetFont('dejavusans', '', 10);
             $pdf->SetAutoPageBreak(true, 30);
             
+            ob_start();
             $pdf->AddPage();
+            ob_end_clean();
             
             $html = $this->generateIncomeTaxReportHtml($org, $taxData, $year);
+            ob_start();
             $pdf->writeHTML($html, true, false, true, false, 'R');
+            ob_end_clean();
             
-            return response($pdf->Output('income_tax_report.pdf', 'S'), 200, [
-                'Content-Type' => 'application/pdf',
-                'Content-Disposition' => 'attachment; filename="income_tax_' . $year . '.pdf"',
-            ]);
+            $pdfContent = $pdf->Output('income_tax_report.pdf', 'S');
+
+            $resp = response($pdfContent, 200)
+                ->header('Content-Type', 'application/octet-stream')
+                ->header('Content-Disposition', 'attachment; filename="income_tax_' . $year . '.pdf"')
+                ->header('Access-Control-Allow-Origin', '*')
+                ->header('Access-Control-Allow-Methods', 'GET, OPTIONS')
+                ->header('Access-Control-Allow-Headers', '*');
+
+            return $resp;
         } catch (\Exception $e) {
             \Illuminate\Support\Facades\Log::error('Income Tax PDF Error: ' . $e->getMessage());
-            return response()->json(['error' => 'فشل إنشاء PDF: ' . $e->getMessage()], 500);
+            return response()->json(['error' => 'فشل إنشاء PDF: ' . $e->getMessage()], 500)
+                ->header('Access-Control-Allow-Origin', '*');
         }
     }
 
@@ -444,7 +468,7 @@ class PdfExportController extends Controller
             $pdf->SetSubject('Annual Leave and Warning Report');
             
             $pdf->setRTL(true);
-            $pdf->SetFont('arial', '', 10);
+            $pdf->SetFont('dejavusans', '', 10);
             $pdf->SetAutoPageBreak(true, 30);
             
             $pdf->AddPage();
@@ -452,10 +476,13 @@ class PdfExportController extends Controller
             $html = $this->generateLeaveWarningReportHtml($org, $reportData, $year);
             $pdf->writeHTML($html, true, false, true, false, 'R');
             
-            return response($pdf->Output('leave_warning_report.pdf', 'S'), 200, [
-                'Content-Type' => 'application/pdf',
-                'Content-Disposition' => 'attachment; filename="leave_warning_' . $year . '.pdf"',
-            ]);
+            $pdfContent = $pdf->Output('leave_warning_report.pdf', 'S');
+            return response($pdfContent, 200)
+                ->header('Content-Type', 'application/octet-stream')
+                ->header('Content-Disposition', 'attachment; filename="leave_warning_' . $year . '.pdf"')
+                ->header('Access-Control-Allow-Origin', '*')
+                ->header('Access-Control-Allow-Methods', 'GET, OPTIONS')
+                ->header('Access-Control-Allow-Headers', '*');
         } catch (\Exception $e) {
             \Illuminate\Support\Facades\Log::error('Leave Warning PDF Error: ' . $e->getMessage());
             return response()->json(['error' => 'فشل إنشاء PDF: ' . $e->getMessage()], 500);
@@ -484,7 +511,7 @@ class PdfExportController extends Controller
             $pdf->SetTitle($content['title']);
             
             $pdf->setRTL(true);
-            $pdf->SetFont('arial', '', 12);
+            $pdf->SetFont('dejavusans', '', 12);
             $pdf->SetAutoPageBreak(true, 40);
             
             $pdf->AddPage();
@@ -492,10 +519,13 @@ class PdfExportController extends Controller
             $html = $this->generateLetterHtml($org, $employee, $content);
             $pdf->writeHTML($html, true, false, true, false, 'R');
             
-            return response($pdf->Output('letter.pdf', 'S'), 200, [
-                'Content-Type' => 'application/pdf',
-                'Content-Disposition' => 'attachment; filename="letter_' . $employee->name . '.pdf"',
-            ]);
+            $pdfContent = $pdf->Output('letter.pdf', 'S');
+            return response($pdfContent, 200)
+                ->header('Content-Type', 'application/octet-stream')
+                ->header('Content-Disposition', 'attachment; filename="letter_' . $employee->name . '.pdf"')
+                ->header('Access-Control-Allow-Origin', '*')
+                ->header('Access-Control-Allow-Methods', 'GET, OPTIONS')
+                ->header('Access-Control-Allow-Headers', '*');
         } catch (\Exception $e) {
             \Illuminate\Support\Facades\Log::error('Letter PDF Error: ' . $e->getMessage());
             return response()->json(['error' => 'فشل إنشاء PDF: ' . $e->getMessage()], 500);
@@ -531,7 +561,7 @@ class PdfExportController extends Controller
             $pdf->SetTitle('تقرير الأقسام');
             
             $pdf->setRTL(true);
-            $pdf->SetFont('arial', '', 10);
+            $pdf->SetFont('dejavusans', '', 10);
             $pdf->SetAutoPageBreak(true, 30);
             
             $pdf->AddPage();
@@ -539,10 +569,13 @@ class PdfExportController extends Controller
             $html = $this->generateDepartmentReportHtml($org, $reportData, $year);
             $pdf->writeHTML($html, true, false, true, false, 'R');
             
-            return response($pdf->Output('department_report.pdf', 'S'), 200, [
-                'Content-Type' => 'application/pdf',
-                'Content-Disposition' => 'attachment; filename="department_' . $year . '.pdf"',
-            ]);
+            $pdfContent = $pdf->Output('department_report.pdf', 'S');
+            return response($pdfContent, 200)
+                ->header('Content-Type', 'application/octet-stream')
+                ->header('Content-Disposition', 'attachment; filename="department_' . $year . '.pdf"')
+                ->header('Access-Control-Allow-Origin', '*')
+                ->header('Access-Control-Allow-Methods', 'GET, OPTIONS')
+                ->header('Access-Control-Allow-Headers', '*');
         } catch (\Exception $e) {
             \Illuminate\Support\Facades\Log::error('Department PDF Error: ' . $e->getMessage());
             return response()->json(['error' => 'فشل إنشاء PDF: ' . $e->getMessage()], 500);
@@ -588,7 +621,7 @@ class PdfExportController extends Controller
             $pdf->SetTitle('Salary Increase Report');
             
             $pdf->setRTL(true);
-            $pdf->SetFont('arial', '', 10);
+            $pdf->SetFont('dejavusans', '', 10);
             $pdf->SetAutoPageBreak(true, 30);
             
             $pdf->AddPage();
@@ -596,10 +629,13 @@ class PdfExportController extends Controller
             $html = $this->generateSalaryIncreaseReportHtml($org, $reportData, $year);
             $pdf->writeHTML($html, true, false, true, false, 'R');
             
-            return response($pdf->Output('salary_increase_report.pdf', 'S'), 200, [
-                'Content-Type' => 'application/pdf',
-                'Content-Disposition' => 'attachment; filename="salary_increase_' . $year . '.pdf"',
-            ]);
+            $pdfContent = $pdf->Output('salary_increase_report.pdf', 'S');
+            return response($pdfContent, 200)
+                ->header('Content-Type', 'application/octet-stream')
+                ->header('Content-Disposition', 'attachment; filename="salary_increase_' . $year . '.pdf"')
+                ->header('Access-Control-Allow-Origin', '*')
+                ->header('Access-Control-Allow-Methods', 'GET, OPTIONS')
+                ->header('Access-Control-Allow-Headers', '*');
         } catch (\Exception $e) {
             \Illuminate\Support\Facades\Log::error('Salary Increase PDF Error: ' . $e->getMessage());
             return response()->json(['error' => 'فشل إنشاء PDF: ' . $e->getMessage()], 500);
@@ -652,10 +688,13 @@ class PdfExportController extends Controller
         $html = $this->generateSalaryIncreaseReportHtml($org, $reportData, $year);
         $pdf->writeHTML($html, true, false, true, false, 'R');
         
-        return response($pdf->Output('salary_increase_report.pdf', 'S'), 200, [
-            'Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'attachment; filename="تقرير_الزيادة_السنوية_' . $year . '.pdf"',
-        ]);
+        $pdfContent = $pdf->Output('salary_increase_report.pdf', 'S');
+        return response($pdfContent, 200)
+            ->header('Content-Type', 'application/octet-stream')
+            ->header('Content-Disposition', 'attachment; filename="تقرير_الزيادة_السنوية_' . $year . '.pdf"')
+            ->header('Access-Control-Allow-Origin', '*')
+            ->header('Access-Control-Allow-Methods', 'GET, OPTIONS')
+            ->header('Access-Control-Allow-Headers', '*');
     }
 
     public function employeeDetailedReport(Request $request)
@@ -686,7 +725,7 @@ class PdfExportController extends Controller
             $pdf->SetSubject('Employee Detailed Report');
             
             $pdf->setRTL(true);
-            $pdf->SetFont('arial', '', 10);
+            $pdf->SetFont('dejavusans', '', 10);
             $pdf->SetAutoPageBreak(true, 25);
             
             $html = $this->generateEmployeeDetailedReportHtml($org, $employee);
@@ -697,10 +736,13 @@ class PdfExportController extends Controller
                 $pdf->writeHTML($pageContent, true, false, true, false, 'R');
             }
             
-            return response($pdf->Output('employee_report_' . $employee->name . '.pdf', 'S'), 200, [
-                'Content-Type' => 'application/pdf',
-                'Content-Disposition' => 'attachment; filename="employee_report_' . $employee->name . '.pdf"',
-            ]);
+            $pdfContent = $pdf->Output('employee_report_' . $employee->name . '.pdf', 'S');
+            return response($pdfContent, 200)
+                ->header('Content-Type', 'application/octet-stream')
+                ->header('Content-Disposition', 'attachment; filename="employee_report_' . $employee->name . '.pdf"')
+                ->header('Access-Control-Allow-Origin', '*')
+                ->header('Access-Control-Allow-Methods', 'GET, OPTIONS')
+                ->header('Access-Control-Allow-Headers', '*');
         } catch (\Exception $e) {
             \Illuminate\Support\Facades\Log::error('Employee PDF Error: ' . $e->getMessage());
             return response()->json(['error' => 'فشل إنشاء PDF: ' . $e->getMessage()], 500);

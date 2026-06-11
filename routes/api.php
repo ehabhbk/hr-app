@@ -344,6 +344,7 @@ Route::middleware('auth:sanctum')->group(function () {
     */
     Route::get('/pdf/salary-report', [PdfExportController::class, 'salaryReport']);
     Route::get('/pdf/income-tax-report', [PdfExportController::class, 'incomeTaxReport']);
+
     Route::get('/pdf/leave-warning-report', [PdfExportController::class, 'leaveWarningReport']);
     Route::get('/pdf/department-report', [PdfExportController::class, 'departmentReport']);
     Route::get('/pdf/salary-increase-report', [PdfExportController::class, 'salaryIncreaseReport']);
@@ -426,4 +427,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/employee-assets/{id}', [AssetController::class, 'update']);
     Route::delete('/employee-assets/{id}', [AssetController::class, 'destroy']);
     Route::post('/employee-assets/{id}/return', [AssetController::class, 'returnAsset']);
+});
+
+// Test route (no auth)
+Route::get('/cors-test', function () {
+    return response()->json(['ok' => true, 'time' => now()->toIso8601String()])
+        ->header('Access-Control-Allow-Origin', '*')
+        ->header('Access-Control-Allow-Methods', 'GET, OPTIONS')
+        ->header('Access-Control-Allow-Headers', '*');
 });
