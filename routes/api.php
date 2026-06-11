@@ -286,6 +286,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/advances/requests', [AdvancesController::class, 'store']);
     Route::post('/advances/requests/{id}/approve', [AdvancesController::class, 'approve']);
     Route::post('/advances/requests/{id}/reject', [AdvancesController::class, 'reject']);
+    Route::post('/advances/requests/{id}/pay-installment', [AdvancesController::class, 'payInstallment']);
 
     /*
     |-----------------------------------------------------------------------

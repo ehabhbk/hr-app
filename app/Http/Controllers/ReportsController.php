@@ -133,8 +133,7 @@ class ReportsController extends Controller
                 $deductAmount = 0;
                 
                 if ($isLongTerm) {
-                    // Long term advance: deduct monthly installment only
-                    $deductAmount = min($monthlyInstallment, $remainingAmount);
+                    $deductAmount = min($monthlyInstallment > 0 ? $monthlyInstallment : $remainingAmount, $remainingAmount);
                 } else {
                     // Short term advance: deduct based on deduction_percent of gross salary
                     // Maximum is max_percent of gross salary
@@ -994,6 +993,10 @@ class ReportsController extends Controller
                 'paid_installments' => $a->paid_installments ?? 0,
                 'remaining_amount' => (float) ($a->remaining_amount ?? 0),
                 'total_paid' => ($a->paid_installments ?? 0) * ($a->monthly_installment ?? 0),
+                'installments_detail' => $a->installments_detail,
+                'paid_installments_count' => $a->paid_installments_count,
+                'total_paid_amount' => $a->total_paid_amount,
+                'total_remaining_amount' => $a->total_remaining_amount,
                 'note' => $a->note ?? '',
                 'attachment' => $a->attachment,
                 'attachment_url' => $a->attachment ? url('storage/' . $a->attachment) : null,
@@ -1072,18 +1075,9 @@ class ReportsController extends Controller
             'compensations' => function($q) {
                 $q->orderBy('created_at', 'desc');
             },
-            'advances' => function($q) use ($month, $year) {
-                $q->where(function($sub) use ($month, $year) {
-                    $sub->where('status', 'approved')
-                        ->where('remaining_amount', '>', 0)
-                        ->where('type', 'long');
-                })->orWhere(function($sub) use ($month, $year) {
-                    $sub->where('status', 'approved')
-                        ->where('remaining_amount', '>', 0)
-                        ->where('type', 'short')
-                        ->whereMonth('date', $month)
-                        ->whereYear('date', $year);
-                });
+            'advances' => function($q) {
+                $q->where('status', 'approved')
+                  ->where('remaining_amount', '>', 0);
             },
             'deductions' => function($q) use ($month, $year) {
                 $q->whereMonth('date', $month)->whereYear('date', $year);
@@ -1136,16 +1130,16 @@ class ReportsController extends Controller
 
         $totalAdvanceDeduction = 0;
         foreach ($emp->advances as $advance) {
-            if (($advance->remaining_amount ?? 0) <= 0) continue;
             if ($advance->status !== 'approved') continue;
+            if (($advance->remaining_amount ?? 0) <= 0) continue;
 
-            $remainingAmount = (float) ($advance->remaining_amount ?? 0);
-            $monthlyInstallment = (float) ($advance->monthly_installment ?? 0);
             $isLongTerm = $advance->type === 'long';
+            $remainingAmount = (float) ($advance->remaining_amount ?? 0);
 
             $deductAmount = 0;
             if ($isLongTerm) {
-                $deductAmount = min($monthlyInstallment, $remainingAmount);
+                $monthlyInst = (float) ($advance->monthly_installment ?? 0);
+                $deductAmount = $monthlyInst > 0 ? min($monthlyInst, $remainingAmount) : $remainingAmount;
             } else {
                 $maxDeduction = min(
                     $grossSalary * $shortDeductionPercent,
@@ -1156,19 +1150,23 @@ class ReportsController extends Controller
             $totalAdvanceDeduction += $deductAmount;
         }
 
-        $actualAdvanceDeduction = min($totalAdvanceDeduction, max(0, $grossSalary - $insuranceAmount - $otherDeductions - $attendanceDeductions));
+        // Priority: insurance first, then advance, then attendance/other deductions
+        $availableAfterInsurance = $grossSalary - $insuranceAmount;
+        $actualAdvanceDeduction = min($totalAdvanceDeduction, max(0, $availableAfterInsurance));
+        $availableAfterAdvance = $availableAfterInsurance - $actualAdvanceDeduction;
+        $actualAttendanceDeductions = min($attendanceDeductions + $otherDeductions, max(0, $availableAfterAdvance));
 
         // Tax
         $tax = self::calculateTax($baseSalary);
 
-        $netSalary = $grossSalary - $insuranceAmount - $otherDeductions - $attendanceDeductions - $actualAdvanceDeduction - $tax;
+        $netSalary = $grossSalary - $insuranceAmount - $actualAdvanceDeduction - $actualAttendanceDeductions - $tax;
 
         return [
             'base_salary' => $baseSalary,
             'gross_salary' => $grossSalary,
             'insurance_amount' => $insuranceAmount,
             'deductions' => $otherDeductions,
-            'attendance_deductions' => $attendanceDeductions,
+            'attendance_deductions' => $actualAttendanceDeductions,
             'advance_deductions' => $actualAdvanceDeduction,
             'income_tax' => $tax,
             'net_salary' => $netSalary,

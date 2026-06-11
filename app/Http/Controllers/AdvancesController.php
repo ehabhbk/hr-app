@@ -14,6 +14,9 @@ class AdvancesController extends Controller
     {
         $advances = AdvanceRequest::with('employee')->orderBy('created_at', 'desc')->get()->map(function ($a) {
             $a->attachment_url = $a->attachment ? url('storage/' . $a->attachment) : null;
+            $a->paid_installments_count = $a->paid_installments_count;
+            $a->total_paid_amount = $a->total_paid_amount;
+            $a->total_remaining_amount = $a->total_remaining_amount;
             return $a;
         });
         return response()->json(['data' => $advances]);
@@ -21,16 +24,38 @@ class AdvancesController extends Controller
 
     public function store(Request $r)
     {
+        // Decode JSON string from multipart form data
+        if ($r->has('installments_detail') && is_string($r->input('installments_detail'))) {
+            $decoded = json_decode($r->input('installments_detail'), true);
+            if (is_array($decoded)) {
+                $r->merge(['installments_detail' => $decoded]);
+            }
+        }
+
         $data = $r->validate([
             'employee_id' => 'required|exists:employees,id',
             'amount' => 'required|numeric|min:0.01',
             'type' => 'required|string|in:short,long',
             'installments' => 'nullable|integer|min:1',
+            'installments_detail' => 'nullable|array',
+            'installments_detail.*.amount' => 'required|numeric|min:0.01',
             'note' => 'nullable|string',
             'attachment' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:5120',
         ]);
 
         $employee = Employee::find($data['employee_id']);
+        if (!$employee) {
+            return response()->json(['message' => 'الموظف غير موجود'], 404);
+        }
+
+        // Check employee status
+        if ($employee->status === 'terminated') {
+            return response()->json([
+                'message' => 'عذراً، لا يمكن لهذا الموظف طلب سلفة لأنه مفصول',
+                'error' => 'employee_terminated'
+            ], 422);
+        }
+
         $type = $data['type'];
 
         // Get advance settings
@@ -153,15 +178,47 @@ class AdvancesController extends Controller
             $installments = max($minInstallments, min($installments, $maxInstallments));
         }
 
-        // For long advances: validate that amount <= grossSalary * installments
-        if ($type === 'long' && $grossSalary > 0) {
-            $maxAffordable = $grossSalary * $installments;
-            if ($data['amount'] > $maxAffordable) {
-                $requiredMonths = (int)ceil($data['amount'] / $grossSalary);
+        // For long advances: validate installments_detail
+        $installmentsDetail = null;
+        if ($type === 'long') {
+            if (empty($data['installments_detail']) || count($data['installments_detail']) !== $installments) {
                 return response()->json([
-                    'message' => "المبلغ أكبر من راتبك في مدة التقسيط. يجب أن تكون مدة التقسيط {$requiredMonths} شهر أو أكثر (المرتب: {$grossSalary} ج.س × عدد الأقساط ≥ {$data['amount']} ج.س)",
-                    'error' => 'installment_insufficient'
+                    'message' => "يرجى إدخال {$installments} قسط بقيمة كل قسط",
+                    'error' => 'installments_detail_required'
                 ], 422);
+            }
+
+            $sumAmounts = array_sum(array_column($data['installments_detail'], 'amount'));
+            if (abs($sumAmounts - (float)$data['amount']) > 0.01) {
+                return response()->json([
+                    'message' => 'مجموع الأقساط (' . number_format($sumAmounts) . ') يجب أن يساوي قيمة السلفة (' . number_format($data['amount']) . ')',
+                    'error' => 'installments_sum_mismatch'
+                ], 422);
+            }
+
+            if ($grossSalary > 0) {
+                foreach ($data['installments_detail'] as $i => $inst) {
+                    if ((float)$inst['amount'] > $grossSalary) {
+                        return response()->json([
+                            'message' => "القسط رقم " . ($i + 1) . " قيمته {$inst['amount']} أكبر من المرتب الشهري ({$grossSalary})",
+                            'error' => 'installment_exceeds_salary'
+                        ], 422);
+                    }
+                }
+            }
+
+            $now = now();
+            $installmentsDetail = [];
+            foreach ($data['installments_detail'] as $i => $inst) {
+                $dt = $now->copy()->addMonths($i);
+                $installmentsDetail[] = [
+                    'installment_no' => $i + 1,
+                    'amount' => (float)$inst['amount'],
+                    'month' => $dt->month,
+                    'year' => $dt->year,
+                    'paid' => false,
+                    'paid_at' => null,
+                ];
             }
         }
 
@@ -171,7 +228,7 @@ class AdvancesController extends Controller
             $attachmentPath = $r->file('attachment')->store('advance-attachments', 'public');
         }
 
-        $advance = AdvanceRequest::create([
+        $advanceData = [
             'employee_id' => $data['employee_id'],
             'amount' => $data['amount'],
             'type' => $type,
@@ -180,7 +237,12 @@ class AdvancesController extends Controller
             'attachment' => $attachmentPath,
             'remaining_amount' => $data['amount'],
             'status' => 'pending',
-        ]);
+        ];
+        if ($installmentsDetail) {
+            $advanceData['installments_detail'] = $installmentsDetail;
+        }
+
+        $advance = AdvanceRequest::create($advanceData);
 
         if ($employee) {
             Notification::send(
@@ -201,10 +263,26 @@ class AdvancesController extends Controller
         $a->status = 'approved';
         $a->date = now()->format('Y-m-d');
         
-        // Calculate monthly installment for long advances
+        // Initialize installments_detail if not set (for long advances)
         if ($a->type === 'long' && $a->installments > 0) {
             $a->monthly_installment = $a->amount / $a->installments;
             $a->remaining_amount = $a->amount;
+            if (empty($a->installments_detail)) {
+                $now = now();
+                $detail = [];
+                for ($i = 0; $i < $a->installments; $i++) {
+                    $dt = $now->copy()->addMonths($i);
+                    $detail[] = [
+                        'installment_no' => $i + 1,
+                        'amount' => $a->monthly_installment,
+                        'month' => $dt->month,
+                        'year' => $dt->year,
+                        'paid' => false,
+                        'paid_at' => null,
+                    ];
+                }
+                $a->installments_detail = $detail;
+            }
         }
         
         $a->save();
@@ -250,6 +328,41 @@ class AdvancesController extends Controller
                 ['advance_id' => $a->id, 'employee_id' => $employee->id]
             );
         }
+
+        return response()->json(['data' => $a]);
+    }
+
+    public function payInstallment(Request $r, $id)
+    {
+        $a = AdvanceRequest::findOrFail($id);
+        if ($a->status !== 'approved') {
+            return response()->json(['message' => 'السلفة غير معتمدة'], 422);
+        }
+
+        $installmentNo = $r->input('installment_no');
+        $detail = $a->installments_detail ?? [];
+
+        if (empty($detail)) {
+            return response()->json(['message' => 'لا توجد أقساط مسجلة'], 422);
+        }
+
+        $found = false;
+        foreach ($detail as &$inst) {
+            if ((int)$inst['installment_no'] === (int)$installmentNo && !$inst['paid']) {
+                $inst['paid'] = true;
+                $inst['paid_at'] = now()->toDateTimeString();
+                $found = true;
+                break;
+            }
+        }
+
+        if (!$found) {
+            return response()->json(['message' => 'القسط غير موجود أو مدفوع مسبقاً'], 422);
+        }
+
+        $a->installments_detail = $detail;
+        $a->syncFromDetail();
+        $a->save();
 
         return response()->json(['data' => $a]);
     }
