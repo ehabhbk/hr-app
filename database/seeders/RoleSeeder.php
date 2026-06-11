@@ -14,6 +14,7 @@ class RoleSeeder extends Seeder
             [
                 'name' => 'admin',
                 'name_ar' => 'مدير النظام',
+                'display_name' => 'مدير النظام',
                 'description' => 'صلاحيات كاملة على النظام',
                 'color' => '#dc2626',
                 'permissions' => ['*'],
@@ -21,6 +22,7 @@ class RoleSeeder extends Seeder
             [
                 'name' => 'hr_manager',
                 'name_ar' => 'مدير الموارد البشرية',
+                'display_name' => 'مدير الموارد البشرية',
                 'description' => 'إدارة الموارد البشرية',
                 'color' => '#7c3aed',
                 'permissions' => [
@@ -45,6 +47,7 @@ class RoleSeeder extends Seeder
             [
                 'name' => 'accountant',
                 'name_ar' => 'محاسب',
+                'display_name' => 'محاسب',
                 'description' => 'إدارة الرواتب والمالية',
                 'color' => '#059669',
                 'permissions' => [
@@ -59,6 +62,7 @@ class RoleSeeder extends Seeder
             [
                 'name' => 'department_manager',
                 'name_ar' => 'مدير قسم',
+                'display_name' => 'مدير قسم',
                 'description' => 'إدارة القسم',
                 'color' => '#0891b2',
                 'permissions' => [
@@ -73,6 +77,7 @@ class RoleSeeder extends Seeder
             [
                 'name' => 'department_supervisor',
                 'name_ar' => 'مشرف قسم',
+                'display_name' => 'مشرف قسم',
                 'description' => 'مشرف على موظفي القسم',
                 'color' => '#0891b2',
                 'permissions' => [
@@ -87,6 +92,7 @@ class RoleSeeder extends Seeder
             [
                 'name' => 'employee',
                 'name_ar' => 'موظف',
+                'display_name' => 'موظف',
                 'description' => 'صلاحيات الموظف العادي',
                 'color' => '#6366f1',
                 'permissions' => [
@@ -102,14 +108,16 @@ class RoleSeeder extends Seeder
 
         foreach ($roles as $roleData) {
             $permissions = $roleData['permissions'];
-            unset($roleData['permissions']);
             
             $role = Role::firstOrCreate(
                 ['name' => $roleData['name']],
                 $roleData
             );
 
-            // Clear existing permissions and add new ones
+            // Update permissions JSON field (for existing roles too)
+            $role->update(['permissions' => $permissions]);
+
+            // Clear existing role_permissions records and add new ones
             $role->permissions()->delete();
             
             foreach ($permissions as $perm) {

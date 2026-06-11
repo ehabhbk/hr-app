@@ -12,9 +12,15 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('advances_requests', function (Blueprint $table) {
-            $table->string('type')->default('short')->after('status');
-            $table->integer('installments')->default(1)->after('type');
-            $table->date('date')->nullable()->after('installments');
+            if (!Schema::hasColumn('advances_requests', 'type')) {
+                $table->string('type')->default('short')->after('status');
+            }
+            if (!Schema::hasColumn('advances_requests', 'installments')) {
+                $table->integer('installments')->default(1)->after('type');
+            }
+            if (!Schema::hasColumn('advances_requests', 'date')) {
+                $table->date('date')->nullable()->after('installments');
+            }
         });
     }
 

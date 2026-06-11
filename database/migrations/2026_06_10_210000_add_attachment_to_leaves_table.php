@@ -9,7 +9,9 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('leaves', function (Blueprint $table) {
-            $table->string('attachment')->nullable()->after('medical_certificate');
+            if (!Schema::hasColumn('leaves', 'attachment')) {
+                $table->string('attachment')->nullable()->after('medical_certificate');
+            }
         });
     }
 

@@ -9,30 +9,48 @@ return new class extends Migration
     public function up(): void
     {
         // Create roles table first
-        Schema::create('roles', function (Blueprint $table) {
-            $table->id();
-            $table->string('name');
-            $table->string('name_ar');
-            $table->string('description')->nullable();
-            $table->string('color')->default('#6366f1');
-            $table->json('permissions')->nullable();
-            $table->timestamps();
+        if (!Schema::hasTable('roles')) {
+            Schema::create('roles', function (Blueprint $table) {
+                $table->id();
+                $table->string('name');
+                $table->string('name_ar');
+                $table->string('description')->nullable();
+                $table->string('color')->default('#6366f1');
+                $table->json('permissions')->nullable();
+                $table->timestamps();
+            });
+        }
+
+        // Ensure roles table has name_ar and color columns (in case created by another migration without them)
+        Schema::table('roles', function (Blueprint $table) {
+            if (!Schema::hasColumn('roles', 'name_ar')) {
+                $table->string('name_ar')->nullable()->after('name');
+            }
+            if (!Schema::hasColumn('roles', 'color')) {
+                $table->string('color')->default('#6366f1')->after('description');
+            }
         });
 
         // Create role_permissions table
-        Schema::create('role_permissions', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('role_id')->constrained()->cascadeOnDelete();
-            $table->string('permission');
-            $table->string('module');
-            $table->timestamps();
-            $table->unique(['role_id', 'permission', 'module']);
-        });
+        if (!Schema::hasTable('role_permissions')) {
+            Schema::create('role_permissions', function (Blueprint $table) {
+                $table->id();
+                $table->foreignId('role_id')->constrained()->cascadeOnDelete();
+                $table->string('permission');
+                $table->string('module');
+                $table->timestamps();
+                $table->unique(['role_id', 'permission', 'module']);
+            });
+        }
 
         // Add role to users
         Schema::table('users', function (Blueprint $table) {
-            $table->foreignId('role_id')->nullable()->after('avatar')->constrained('roles')->nullOnDelete();
-            $table->boolean('is_active')->default(true)->after('role_id');
+            if (!Schema::hasColumn('users', 'role_id')) {
+                $table->foreignId('role_id')->nullable()->after('avatar')->constrained('roles')->nullOnDelete();
+            }
+            if (!Schema::hasColumn('users', 'is_active')) {
+                $table->boolean('is_active')->default(true)->after('role_id');
+            }
         });
 
         // Add employee number and bank info to employees

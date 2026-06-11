@@ -8,10 +8,13 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (Schema::hasTable('fingerprints')) {
+            return;
+        }
         Schema::create('fingerprints', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('employee_id')->constrained()->onDelete('cascade');
-            $table->foreignId('attendance_device_id')->nullable()->constrained()->onDelete('set null');
+            $table->unsignedBigInteger('employee_id');
+            $table->unsignedBigInteger('attendance_device_id')->nullable();
             $table->string('finger_id');
             $table->string('finger_position')->default('right');
             $table->string('finger')->default('thumb');
@@ -21,6 +24,18 @@ return new class extends Migration
             
             $table->unique(['employee_id', 'finger_id', 'attendance_device_id'], 'unique_fingerprint');
         });
+
+        // Add foreign keys after table creation (referenced tables may not exist yet)
+        if (Schema::hasTable('employees')) {
+            Schema::table('fingerprints', function (Blueprint $table) {
+                $table->foreign('employee_id')->references('id')->on('employees')->onDelete('cascade');
+            });
+        }
+        if (Schema::hasTable('attendance_devices')) {
+            Schema::table('fingerprints', function (Blueprint $table) {
+                $table->foreign('attendance_device_id')->references('id')->on('attendance_devices')->onDelete('set null');
+            });
+        }
     }
 
     public function down(): void

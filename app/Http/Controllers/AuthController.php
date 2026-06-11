@@ -27,6 +27,7 @@ class AuthController extends Controller
             'avatar'   => $request->avatar,
         ]);
 
+        $user->load('role');
         $token = $user->createToken('auth_token')->plainTextToken;
         
         // Get permissions
@@ -56,7 +57,7 @@ class AuthController extends Controller
             'password' => 'required|string',
         ]);
 
-        $user = User::where('username', $request->username)->first();
+        $user = User::with('role')->where('username', $request->username)->first();
 
         if (!$user || !Hash::check($request->password, $user->password)) {
             return response()->json(['message' => 'بيانات الدخول غير صحيحة ❌'], 401);
@@ -66,7 +67,7 @@ class AuthController extends Controller
         
         // Get permissions from role directly
         $permissions = [];
-        $role = Role::find($user->role_id);
+        $role = $user->role;
         if ($role) {
             $perms = $role->permissions;
             if (is_array($perms)) {

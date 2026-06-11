@@ -207,6 +207,27 @@ return new class extends Migration {
                 } catch (\Throwable $e) {}
             });
         }
+
+        // Fix foreign keys on tables created before employees existed (e.g., deductions, fingerprints)
+        if (Schema::hasTable('deductions') && Schema::hasColumn('deductions', 'employee_id')) {
+            try {
+                Schema::table('deductions', function (Blueprint $table) {
+                    $table->foreign('employee_id')->references('id')->on('employees')->onDelete('cascade');
+                });
+            } catch (\Throwable $e) {}
+        }
+        if (Schema::hasTable('fingerprints') && Schema::hasColumn('fingerprints', 'employee_id')) {
+            try {
+                Schema::table('fingerprints', function (Blueprint $table) {
+                    $table->foreign('employee_id')->references('id')->on('employees')->onDelete('cascade');
+                });
+            } catch (\Throwable $e) {}
+            try {
+                Schema::table('fingerprints', function (Blueprint $table) {
+                    $table->foreign('attendance_device_id')->references('id')->on('attendance_devices')->onDelete('set null');
+                });
+            } catch (\Throwable $e) {}
+        }
     }
 
     public function down(): void

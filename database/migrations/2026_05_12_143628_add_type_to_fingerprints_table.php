@@ -9,7 +9,9 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('fingerprints', function (Blueprint $table) {
-            $table->string('type')->default('fingerprint')->after('is_active');
+            if (!Schema::hasColumn('fingerprints', 'type')) {
+                $table->string('type')->default('fingerprint')->after('is_active');
+            }
         });
     }
 
