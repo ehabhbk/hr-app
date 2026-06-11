@@ -267,6 +267,9 @@ class AttendanceRecordController extends Controller
             }
         }
         
+        // Check if absence rules are enabled (controls deductions & warnings)
+        $rulesEnabled = $attendanceSettings['absence_rules_enabled'] ?? false;
+        
         // Count late arrivals in the month (for deduction and warning thresholds)
         $recordDate = $record->date instanceof Carbon ? $record->date : Carbon::parse($record->date);
         $monthStart = $recordDate->copy()->startOfMonth();
@@ -278,25 +281,46 @@ class AttendanceRecordController extends Controller
             ->where('delay_excused', false)
             ->count();
         
-        // Calculate deduction if late and threshold reached
-        if ($record->has_delay && !$record->delay_excused && $record->check_in_delay_minutes > $allowedDelayMinutes) {
-            // Only deduct if late count >= delay_before_deduction threshold
-            if ($lateCount >= $delayBeforeDeduction) {
-                $baseSalary = $employee->base_salary ?? 0;
-                $positionAllowance = $employee->position_allowance ?? 0;
-                $transportAllowance = $employee->transport_allowance ?? 0;
-                $housingAllowance = $employee->housing_allowance ?? 0;
-                $foodAllowance = $employee->food_allowance ?? 0;
-                $grossSalary = $baseSalary + $positionAllowance + $transportAllowance + $housingAllowance + $foodAllowance;
+        // Deductions & warnings only apply when rules are enabled
+        if ($rulesEnabled) {
+            // Calculate deduction if late and threshold reached
+            if ($record->has_delay && !$record->delay_excused && $record->check_in_delay_minutes > $allowedDelayMinutes) {
+                // Only deduct if late count >= delay_before_deduction threshold
+                if ($lateCount >= $delayBeforeDeduction) {
+                    $baseSalary = $employee->base_salary ?? 0;
+                    $positionAllowance = $employee->position_allowance ?? 0;
+                    $transportAllowance = $employee->transport_allowance ?? 0;
+                    $housingAllowance = $employee->housing_allowance ?? 0;
+                    $foodAllowance = $employee->food_allowance ?? 0;
+                    $grossSalary = $baseSalary + $positionAllowance + $transportAllowance + $housingAllowance + $foodAllowance;
+                    
+                    $salary = $grossSalary > 0 ? $grossSalary : 1000;
+                    $hourlyRate = $salary / 240;
+                    $deductionMinutes = $record->check_in_delay_minutes - $allowedDelayMinutes;
+                    $record->delay_deduction = round($hourlyRate * ($deductionMinutes / 60) * ($lateDeductionPercent / 100), 2);
+                }
+            }
+            
+            // Issue warning if late count >= delay_before_warning threshold
+            if ($record->has_delay && !$record->delay_excused && $lateCount >= $delayBeforeWarning && !$record->warning_issued) {
+                $record->warning_issued = true;
                 
-                $salary = $grossSalary > 0 ? $grossSalary : 1000;
-                $hourlyRate = $salary / 240;
-                $deductionMinutes = $record->check_in_delay_minutes - $allowedDelayMinutes;
-                $record->delay_deduction = round($hourlyRate * ($deductionMinutes / 60) * ($lateDeductionPercent / 100), 2);
+                $warningDate = $record->date instanceof Carbon ? $record->date->toDateString() : Carbon::parse($record->date)->toDateString();
+                
+                $warning = Warning::create([
+                    'employee_id' => $record->employee_id,
+                    'type' => 'تأخير متكرر',
+                    'reason' => 'تأخر ' . $lateCount . ' مرات خلال الشهر',
+                    'date' => $warningDate,
+                    'status' => 'active',
+                    'created_by' => auth()->id(),
+                ]);
+                
+                $record->warning_id = $warning->id;
             }
         }
-        
-        // Calculate check-out type
+
+        // Calculate check-out type (always runs, not a deduction)
         if ($record->check_out_time) {
             $recordDate = $record->date instanceof Carbon ? $record->date->format('Y-m-d') : $record->date;
             $shiftEndTime = Carbon::parse($recordDate . ' ' . $shiftEnd, $tz);
@@ -305,15 +329,14 @@ class AttendanceRecordController extends Controller
                 ? $record->check_out_time->setTimezone($tz) 
                 : Carbon::parse($record->check_out_time)->setTimezone($tz);
             
-            // diffInMinutes from actualCheckOut to shiftEnd gives positive if early leave
             $earlyMinutes = $actualCheckOut->diffInMinutes($shiftEndTime);
             
             if ($actualCheckOut->lt($shiftEndTime)) {
                 $record->check_out_type = 'early';
                 $record->check_out_early_minutes = $earlyMinutes;
                 
-                // Calculate early leave deduction - use gross salary
-                if (!$record->check_out_excused) {
+                // Early leave deduction only when rules enabled
+                if ($rulesEnabled && !$record->check_out_excused) {
                     $baseSalary = $employee->base_salary ?? 0;
                     $positionAllowance = $employee->position_allowance ?? 0;
                     $transportAllowance = $employee->transport_allowance ?? 0;
@@ -332,7 +355,7 @@ class AttendanceRecordController extends Controller
             }
         }
         
-        // Calculate worked hours
+        // Calculate worked hours (always runs)
         if ($record->check_in_time && $record->check_out_time) {
             $checkIn = $record->check_in_time instanceof Carbon 
                 ? $record->check_in_time->setTimezone($tz) 
@@ -345,28 +368,8 @@ class AttendanceRecordController extends Controller
         }
         $record->expected_hours = $expectedHours;
         
-        // Calculate total deduction
+        // Calculate total deduction (absence_deduction always included, delay/early only if rules enabled)
         $record->total_deduction = ($record->delay_deduction ?? 0) + ($record->early_leave_deduction ?? 0) + ($record->absence_deduction ?? 0);
-        
-        // Issue warning if late count >= delay_before_warning threshold
-        if ($record->has_delay && !$record->delay_excused && $lateCount >= $delayBeforeWarning && !$record->warning_issued) {
-            $record->warning_issued = true;
-            
-            // Ensure recordDate is a Carbon object for toDateString()
-            $warningDate = $record->date instanceof Carbon ? $record->date->toDateString() : Carbon::parse($record->date)->toDateString();
-            
-            // Create warning record
-            $warning = Warning::create([
-                'employee_id' => $record->employee_id,
-                'type' => 'تأخير متكرر',
-                'reason' => 'تأخر ' . $lateCount . ' مرات خلال الشهر',
-                'date' => $warningDate,
-                'status' => 'active',
-                'created_by' => auth()->id(),
-            ]);
-            
-            $record->warning_id = $warning->id;
-        }
         
         $record->save();
     }
@@ -374,13 +377,6 @@ class AttendanceRecordController extends Controller
     // Calculate absences for employees with shifts
     public function calculateAbsencesForPeriod($fromDate, $toDate)
     {
-        $settings = Setting::where('key', 'attendance')->first();
-        $attendanceSettings = $settings ? $settings->value : [];
-
-        // Check if absence rules are enabled
-        $rulesEnabled = $attendanceSettings['absence_rules_enabled'] ?? false;
-        if (!$rulesEnabled) return 0;
-
         $tz = 'Africa/Khartoum';
         $employees = Employee::whereNotNull('work_shift_id')->with('workShift', 'leaves')->get();
 
@@ -457,7 +453,7 @@ class AttendanceRecordController extends Controller
         $count = $this->calculateAbsencesForPeriod($fromDate, $toDate);
         $message = $count > 0
             ? "تم احتساب $count يوم غياب"
-            : "لم يتم احتساب أي غياب (تأكد من تفعيل قواعد الغياب في الإعدادات)";
+            : "لم يتم احتساب أي غياب";
         return response()->json([
             'message' => $message,
             'absences_count' => $count,
