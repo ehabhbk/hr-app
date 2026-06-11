@@ -5,11 +5,11 @@ namespace App\Http\Controllers;
 use App\Models\Employee;
 use App\Models\Leave;
 use App\Models\Warning;
-use App\Models\Loan;
 use App\Models\AdvanceRequest;
 use App\Models\AttendanceDeviceLog;
+use App\Models\AttendanceRecord;
 use App\Models\Setting;
-use App\Models\SalaryIncrease;
+use App\Models\EmployeeEvaluation;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
@@ -21,50 +21,151 @@ class DashboardController extends Controller
         $today = Carbon::today();
         $currentMonth = now()->month;
         $currentYear = now()->year;
+        $todayStr = $today->format('Y-m-d');
 
         $org = Setting::where('key', 'organization')->first();
         $orgData = $org ? $org->value : [];
 
-        $stats = [
-            'total_employees' => Employee::where('status', 'active')->count(),
-            'total_departments' => DB::table('departments')->count(),
-            'new_hires_this_month' => Employee::whereMonth('hire_date', $currentMonth)
-                ->whereYear('hire_date', $currentYear)
-                ->where('status', 'active')
-                ->count(),
-            'resigned_this_month' => Employee::where('status', 'inactive')
-                ->whereMonth('updated_at', $currentMonth)
-                ->whereYear('updated_at', $currentYear)
-                ->count(),
-        ];
+        // ==================== EMPLOYEE COUNTS ====================
+        $totalEmployees = Employee::count();
+        $activeEmployees = Employee::where('status', 'active')->count();
+        $terminatedEmployees = Employee::where('status', 'terminated')->count();
+        $totalDepartments = DB::table('departments')->count();
 
-        $attendance = [
-            'present_today' => AttendanceDeviceLog::whereDate('timestamp', $today)
-                ->distinct('device_user_id')
-                ->count('device_user_id'),
-            'late_today' => $this->countLateArrivals($today),
-            'absent_today' => $stats['total_employees'] - AttendanceDeviceLog::whereDate('timestamp', $today)
-                ->distinct('device_user_id')
-                ->count('device_user_id'),
-        ];
+        // Employees on approved leave right now
+        $onLeaveEmployeeIds = Leave::where('status', 'approved')
+            ->where('from_date', '<=', $todayStr)
+            ->where('to_date', '>=', $todayStr)
+            ->pluck('employee_id')
+            ->unique();
+        $onLeaveCount = $onLeaveEmployeeIds->count();
 
-        $attendance['attendance_rate'] = $stats['total_employees'] > 0
-            ? round(($attendance['present_today'] / $stats['total_employees']) * 100, 1)
+        // Employees assigned to a shift and active
+        $employeesWithShift = Employee::whereNotNull('work_shift_id')
+            ->where('status', 'active')
+            ->get();
+
+        // ==================== TODAY'S ATTENDANCE ====================
+        $deviceUserIdsToday = AttendanceDeviceLog::whereDate('timestamp', $today)
+            ->distinct('device_user_id')
+            ->pluck('device_user_id');
+
+        $presentToday = $deviceUserIdsToday->count();
+        $lateToday = $this->countLateArrivals($today);
+
+        // Absent today: employees with shift, active, not on leave, no fingerprint today
+        $absentToday = 0;
+        $notClockedToday = 0;
+        foreach ($employeesWithShift as $emp) {
+            $hasFingerprint = $deviceUserIdsToday->contains($emp->device_user_id);
+            $isOnLeave = $onLeaveEmployeeIds->contains($emp->id);
+
+            if (!$hasFingerprint && !$isOnLeave) {
+                $absentToday++;
+            }
+            if (!$hasFingerprint) {
+                $notClockedToday++;
+            }
+        }
+
+        $attendanceRate = $activeEmployees > 0
+            ? round(($presentToday / $activeEmployees) * 100, 1)
             : 0;
 
-        $pending = [
-            'leaves' => Leave::where('status', 'pending')->count(),
-            'advances' => AdvanceRequest::where('status', 'pending')->count(),
-            'warnings' => Warning::where('status', 'active')->whereMonth('date', $currentMonth)->count(),
+        // ==================== SALARY TOTALS ====================
+        $totalBaseSalaries = Employee::where('status', 'active')->sum('base_salary');
+
+        $totalGrossSalaries = 0;
+        $activeEmpList = Employee::where('status', 'active')->with('compensations')->get();
+        foreach ($activeEmpList as $emp) {
+            $base = (float) ($emp->base_salary ?? 0);
+            $positionAllowance = (float) ($emp->position_allowance ?? 0);
+            $allowances = (float) $emp->compensations->where('is_recurring', true)->sum('value');
+            $totalGrossSalaries += $base + $positionAllowance + $allowances;
+        }
+
+        // ==================== ADVANCES THIS MONTH ====================
+        $advancesThisMonth = AdvanceRequest::where('status', 'approved')
+            ->whereMonth('date', $currentMonth)
+            ->whereYear('date', $currentYear)
+            ->sum('amount');
+
+        // ==================== WARNINGS ====================
+        $warningsThisMonth = Warning::where('status', 'active')
+            ->whereMonth('date', $currentMonth)
+            ->whereYear('date', $currentYear)
+            ->count();
+
+        $warningsThisYear = Warning::where('status', 'active')
+            ->whereYear('date', $currentYear)
+            ->count();
+
+        // ==================== LEAVES ====================
+        $leavesThisMonth = Leave::whereMonth('created_at', $currentMonth)
+            ->whereYear('created_at', $currentYear)
+            ->count();
+
+        $leavesThisYear = Leave::whereYear('created_at', $currentYear)->count();
+
+        // ==================== PIE CHARTS ====================
+        // Warnings by type
+        $warningsPie = [
+            ['label' => 'إنذار كتابي', 'value' => Warning::where('type', 'written')->count(), 'color' => '#F59E0B'],
+            ['label' => 'إنذار نهائي', 'value' => Warning::where('type', 'final')->count(), 'color' => '#EF4444'],
         ];
 
-        $monthlyPayroll = $this->calculateMonthlyPayroll($currentMonth, $currentYear);
-        $yearlyIncreases = SalaryIncrease::whereYear('effective_date', $currentYear)->count();
+        // Leaves by type
+        $allLeaves = Leave::where('status', 'approved')->selectRaw('type, COUNT(*) as count')
+            ->groupBy('type')->pluck('count', 'type');
+        $leaveColors = [
+            'official' => '#3B82F6', 'sick' => '#10B981', 'maternity' => '#EC4899',
+            'hajj' => '#8B5CF6', 'unpaid' => '#6B7280',
+        ];
+        $leaveLabels = [
+            'official' => 'رسمية', 'sick' => 'مرضية', 'maternity' => 'أمومة',
+            'hajj' => 'حج', 'unpaid' => 'بدون مرتب',
+        ];
+        $leavesPie = [];
+        foreach ($leaveLabels as $key => $label) {
+            $leavesPie[] = [
+                'label' => $label,
+                'value' => (int) ($allLeaves[$key] ?? 0),
+                'color' => $leaveColors[$key],
+            ];
+        }
 
+        // Advances by type
+        $shortAmount = AdvanceRequest::where('status', 'approved')
+            ->where('type', 'short')->whereMonth('date', $currentMonth)
+            ->whereYear('date', $currentYear)->sum('amount');
+        $longAmount = AdvanceRequest::where('status', 'approved')
+            ->where('type', 'long')->whereMonth('date', $currentMonth)
+            ->whereYear('date', $currentYear)->sum('amount');
+        $advancesPie = [
+            ['label' => 'سلفة قصيرة', 'value' => $shortAmount, 'color' => '#10B981'],
+            ['label' => 'سلفة طويلة', 'value' => $longAmount, 'color' => '#3B82F6'],
+        ];
+
+        // Attendance pie
+        $attendancePie = [
+            ['label' => 'حضور', 'value' => max(0, $presentToday - $lateToday), 'color' => '#10B981'],
+            ['label' => 'متأخر', 'value' => $lateToday, 'color' => '#F59E0B'],
+            ['label' => 'غياب', 'value' => $absentToday, 'color' => '#EF4444'],
+            ['label' => 'في إجازة', 'value' => $onLeaveCount, 'color' => '#8B5CF6'],
+        ];
+
+        // ==================== IDEAL EMPLOYEE ====================
+        $idealEmployee = $this->getIdealEmployee($currentMonth, $currentYear);
+
+        // ==================== PENDING REQUESTS ====================
+        $pendingLeaves = Leave::where('status', 'pending')->count();
+        $pendingAdvances = AdvanceRequest::where('status', 'pending')->count();
+
+        // ==================== RECENT ACTIVITIES ====================
         $recentActivities = $this->getRecentActivities();
+
+        // ==================== DEPARTMENT STATS ====================
         $departmentStats = $this->getDepartmentStats();
-        $attendanceChart = $this->getAttendanceChart($currentMonth, $currentYear);
-        $payrollTrend = $this->getPayrollTrend($currentYear);
 
         return response()->json([
             'organization' => [
@@ -74,14 +175,38 @@ class DashboardController extends Controller
                 'email' => $orgData['email'] ?? '',
                 'logo_url' => isset($orgData['logo']) ? asset('storage/' . $orgData['logo']) : null,
             ],
-            'stats' => $stats,
-            'attendance' => $attendance,
-            'pending' => $pending,
-            'payroll' => $monthlyPayroll,
+            'stats' => [
+                'total_employees' => $totalEmployees,
+                'active_employees' => $activeEmployees,
+                'total_departments' => $totalDepartments,
+                'terminated_employees' => $terminatedEmployees,
+                'on_leave_now' => $onLeaveCount,
+                'total_base_salaries' => $totalBaseSalaries,
+                'total_gross_salaries' => $totalGrossSalaries,
+                'absences_today' => $absentToday,
+                'not_clocked_today' => $notClockedToday,
+                'late_today' => $lateToday,
+                'attendance_rate' => $attendanceRate,
+                'advances_this_month' => $advancesThisMonth,
+                'warnings_this_month' => $warningsThisMonth,
+                'warnings_this_year' => $warningsThisYear,
+                'leaves_this_month' => $leavesThisMonth,
+                'leaves_this_year' => $leavesThisYear,
+                'employees_with_shifts' => $employeesWithShift->count(),
+            ],
+            'pie_charts' => [
+                'warnings' => $warningsPie,
+                'leaves' => $leavesPie,
+                'advances' => $advancesPie,
+                'attendance' => $attendancePie,
+            ],
+            'pending' => [
+                'leaves' => $pendingLeaves,
+                'advances' => $pendingAdvances,
+            ],
+            'ideal_employee' => $idealEmployee,
             'recent_activities' => $recentActivities,
             'department_stats' => $departmentStats,
-            'attendance_chart' => $attendanceChart,
-            'payroll_trend' => $payrollTrend,
             'generated_at' => now()->format('Y-m-d H:i:s'),
         ]);
     }
@@ -89,35 +214,17 @@ class DashboardController extends Controller
     private function countLateArrivals($date)
     {
         $expectedTime = '08:00:00';
-        
+
         return AttendanceDeviceLog::whereDate('timestamp', $date)
             ->get()
             ->filter(function($log) use ($expectedTime) {
                 if (!$log->timestamp) return false;
-                $actualTime = date('H:i:s', strtotime($log->timestamp));
+                $actualTime = $log->timestamp instanceof Carbon
+                    ? $log->timestamp->format('H:i:s')
+                    : date('H:i:s', strtotime($log->timestamp));
                 return $actualTime > $expectedTime;
             })
             ->count();
-    }
-
-    private function calculateMonthlyPayroll($month, $year)
-    {
-        $employees = Employee::where('status', 'active')->get();
-        $total = 0;
-
-        foreach ($employees as $emp) {
-            $base = $emp->base_salary ?? 0;
-            $allowances = $emp->allowances->sum('amount');
-            $total += $base + $allowances;
-        }
-
-        return [
-            'total_gross' => $total,
-            'total_net' => $total * 0.85,
-            'total_deductions' => $total * 0.15,
-            'employee_count' => $employees->count(),
-            'avg_salary' => $employees->count() > 0 ? $total / $employees->count() : 0,
-        ];
     }
 
     private function getRecentActivities()
@@ -129,9 +236,14 @@ class DashboardController extends Controller
             ->take(5)
             ->get();
         foreach ($recentLeaves as $leave) {
+            $typeMap = [
+                'official' => 'رسمية', 'sick' => 'مرضية', 'maternity' => 'أمومة',
+                'hajj' => 'حج', 'unpaid' => 'بدون مرتب',
+            ];
+            $typeName = $typeMap[$leave->type] ?? $leave->type;
             $activities[] = [
                 'type' => 'leave',
-                'message' => "طلب {$leave->type} من {$leave->employee?->name}",
+                'message' => "إجازة {$typeName} من {$leave->employee?->name}",
                 'status' => $leave->status,
                 'date' => $leave->created_at->toDateTimeString(),
             ];
@@ -150,6 +262,20 @@ class DashboardController extends Controller
             ];
         }
 
+        $recentAdvances = AdvanceRequest::with('employee')
+            ->orderBy('created_at', 'desc')
+            ->take(3)
+            ->get();
+        foreach ($recentAdvances as $adv) {
+            $typeName = $adv->type === 'short' ? 'سلفة قصيرة' : 'سلفة طويلة';
+            $activities[] = [
+                'type' => 'advance',
+                'message' => "{$typeName} من {$adv->employee?->name}",
+                'status' => $adv->status,
+                'date' => $adv->created_at->toDateTimeString(),
+            ];
+        }
+
         usort($activities, fn($a, $b) => strtotime($b['date']) - strtotime($a['date']));
 
         return array_slice($activities, 0, 10);
@@ -164,7 +290,7 @@ class DashboardController extends Controller
                 'departments.id',
                 'departments.name',
                 DB::raw('COUNT(employees.id) as employee_count'),
-                DB::raw('SUM(employees.base_salary) as total_salary')
+                DB::raw('COALESCE(SUM(employees.base_salary), 0) as total_salary')
             )
             ->groupBy('departments.id', 'departments.name')
             ->get()
@@ -176,65 +302,101 @@ class DashboardController extends Controller
             ]);
     }
 
-    private function getAttendanceChart($month, $year)
+    private function getIdealEmployee($month, $year)
     {
-        $chart = [];
-        $daysInMonth = Carbon::create($year, $month)->daysInMonth;
+        $employees = Employee::whereIn('status', ['active', 'vacation'])
+            ->with(['warningsRelation', 'leaves', 'shiftAssignments'])
+            ->get();
 
-        for ($day = 1; $day <= $daysInMonth; $day++) {
-            $date = Carbon::create($year, $month, $day);
-            if ($date->isFuture()) continue;
+        $period = sprintf('%04d-%02d', $year, $month);
 
-            $present = AttendanceDeviceLog::whereDate('date', $date)
-                ->where('type', 'check_in')
-                ->distinct('employee_id')
-                ->count();
+        $evaluations = $employees->map(function($emp) use ($month, $year, $period) {
+            $base = (float) ($emp->base_salary ?? 0);
 
-            $chart[] = [
-                'date' => $date->format('Y-m-d'),
-                'day' => $date->format('d'),
-                'day_name' => $date->locale('ar')->dayName,
-                'present' => $present,
-            ];
-        }
+            // Attendance score from attendance_records
+            $records = AttendanceRecord::where('employee_id', $emp->id)
+                ->whereMonth('date', $month)
+                ->whereYear('date', $year)
+                ->get();
 
-        return $chart;
-    }
+            $lateDays = $records->where('check_in_type', 'late')->count();
+            $absentDays = $records->where('is_absent', true)->count();
+            $earlyLeaveDays = $records->where('check_out_type', 'early')->count();
 
-    private function getPayrollTrend($year)
-    {
-        $trend = [];
+            // Scores
+            $attendanceScore = max(0, 100 - ($lateDays * 5) - ($absentDays * 10) - ($earlyLeaveDays * 3));
 
-        for ($month = 1; $month <= 12; $month++) {
-            $employees = Employee::where('status', 'active')->get();
-            $total = 0;
+            $leaveCount = $emp->leaves->filter(function($l) use ($month, $year) {
+                return $l->status === 'approved'
+                    && $l->from_date->month == $month
+                    && $l->from_date->year == $year;
+            })->count();
+            $leaveScore = max(0, 100 - ($leaveCount * 10));
 
-            foreach ($employees as $emp) {
-                $base = $emp->base_salary ?? 0;
-                $allowances = $emp->allowances->sum('amount');
-                $total += $base + $allowances;
+            $warningCount = $emp->warningsRelation->filter(function($w) use ($month, $year) {
+                return $w->status === 'active'
+                    && $w->date
+                    && date('m', strtotime($w->date)) == $month
+                    && date('Y', strtotime($w->date)) == $year;
+            })->count();
+            $warningScore = max(0, 100 - ($warningCount * 25));
+
+            $totalScore = round(($attendanceScore + $leaveScore + $warningScore) / 3, 1);
+
+            // Manual evaluation stars
+            $manualEval = EmployeeEvaluation::where('employee_id', $emp->id)
+                ->where('period', $period)
+                ->first();
+
+            $starsTotal = 0;
+            if ($manualEval) {
+                $starsTotal = (int) ($manualEval->appearance ?? 0)
+                    + (int) ($manualEval->behavior ?? 0)
+                    + (int) ($manualEval->performance ?? 0);
             }
 
-            $trend[] = [
-                'month' => $month,
-                'month_name' => Carbon::create($year, $month, 1)->locale('ar')->monthName,
-                'total' => $total,
-            ];
-        }
+            $combinedScore = $manualEval
+                ? round($totalScore * 0.7 + ($starsTotal / 30 * 100) * 0.3, 1)
+                : round($totalScore * 0.85, 1);
 
-        return $trend;
+            return [
+                'id' => $emp->id,
+                'name' => $emp->name,
+                'position' => $emp->position,
+                'department' => $emp->department?->name,
+                'profile_photo' => $emp->profile_photo,
+                'attendance_score' => $attendanceScore,
+                'leave_score' => $leaveScore,
+                'warning_score' => $warningScore,
+                'total_score' => $totalScore,
+                'stars' => $manualEval ? [
+                    'appearance' => $manualEval->appearance,
+                    'behavior' => $manualEval->behavior,
+                    'performance' => $manualEval->performance,
+                    'total' => $starsTotal,
+                ] : null,
+                'combined_score' => $combinedScore,
+            ];
+        });
+
+        $ideal = $evaluations->sortByDesc('combined_score')->first();
+
+        return $ideal ?: null;
     }
 
     public function quickStats()
     {
+        $today = Carbon::today();
+
+        $deviceUserIdsToday = AttendanceDeviceLog::whereDate('timestamp', $today)
+            ->distinct('device_user_id')
+            ->pluck('device_user_id');
+
         return response()->json([
             'total_employees' => Employee::where('status', 'active')->count(),
             'pending_leaves' => Leave::where('status', 'pending')->count(),
             'pending_advances' => AdvanceRequest::where('status', 'pending')->count(),
-            'today_attendance' => AttendanceDeviceLog::whereDate('date', today())
-                ->where('type', 'check_in')
-                ->distinct('employee_id')
-                ->count(),
+            'today_attendance' => $deviceUserIdsToday->count(),
         ]);
     }
 }
