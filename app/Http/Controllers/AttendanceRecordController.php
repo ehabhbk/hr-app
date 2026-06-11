@@ -580,19 +580,31 @@ class AttendanceRecordController extends Controller
         $html .= '<th>دقائق التأخير</th><th>الخصم</th>';
         $html .= '</tr></thead><tbody>';
         
+        $dayNames = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
         foreach ($records as $index => $record) {
             $checkInTypeClass = $record->check_in_type == 'late' ? 'late' : ($record->check_in_type == 'early' ? 'early' : 'on-time');
             $checkInLabel = $this->getTypeLabel($record->check_in_type);
             $checkOutLabel = $this->getTypeLabel($record->check_out_type);
             
+            $checkInFormatted = '-';
+            if ($record->check_in_time) {
+                $dt = Carbon::parse($record->check_in_time);
+                $checkInFormatted = $dayNames[$dt->dayOfWeek] . ' ' . $dt->format('d/m/Y H:i:s');
+            }
+            $checkOutFormatted = '-';
+            if ($record->check_out_time) {
+                $dt = Carbon::parse($record->check_out_time);
+                $checkOutFormatted = $dayNames[$dt->dayOfWeek] . ' ' . $dt->format('d/m/Y H:i:s');
+            }
+            
             $html .= '<tr>';
             $html .= '<td>' . ($index + 1) . '</td>';
             $html .= '<td>' . ($record->employee->name ?? '-') . '</td>';
             $html .= '<td>' . ($record->employee->device_user_id ?? '-') . '</td>';
-            $html .= '<td>' . $record->date . '</td>';
-            $html .= '<td>' . ($record->check_in_time ? Carbon::parse($record->check_in_time)->format('H:i:s') : '-') . '</td>';
+            $html .= '<td>' . ($record->date) . '</td>';
+            $html .= '<td>' . $checkInFormatted . '</td>';
             $html .= '<td class="' . $checkInTypeClass . '">' . $checkInLabel . '</td>';
-            $html .= '<td>' . ($record->check_out_time ? Carbon::parse($record->check_out_time)->format('H:i:s') : '-') . '</td>';
+            $html .= '<td>' . $checkOutFormatted . '</td>';
             $html .= '<td>' . $checkOutLabel . '</td>';
             $html .= '<td>' . ($record->check_in_delay_minutes ?: '-') . '</td>';
             $html .= '<td>' . ($record->total_deduction > 0 ? number_format($record->total_deduction, 2) . ' SDG' : '-') . '</td>';
