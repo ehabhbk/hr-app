@@ -756,9 +756,44 @@ class ReportsController extends Controller
         }
         
         $employeeId = $request->input('employee_id');
+        $allEmployees = $request->boolean('all_employees');
+        $fromDate = $request->input('from_date');
+        $toDate = $request->input('to_date');
         
-        if (!$employeeId) {
-            return response()->json(['error' => 'Employee ID is required'], 400);
+        if (!$employeeId && !$allEmployees) {
+            return response()->json(['error' => 'Employee ID is required or set all_employees=1'], 400);
+        }
+
+        if ($allEmployees) {
+            $employees = Employee::with(['department', 'compensations'])->where('status', 'active')->get();
+            $allData = [];
+            foreach ($employees as $emp) {
+                $attendanceQuery = \App\Models\AttendanceRecord::where('employee_id', $emp->id)
+                    ->orderBy('date', 'desc')
+                    ->limit(100);
+                if ($fromDate) $attendanceQuery->where('date', '>=', $fromDate);
+                if ($toDate) $attendanceQuery->where('date', '<=', $toDate);
+                $attendanceRecords = $attendanceQuery->get();
+
+                $allData[] = [
+                    'employee' => [
+                        'id' => $emp->id,
+                        'name' => $emp->name,
+                        'employee_number' => $emp->employee_number ?? $emp->file_number ?? '-',
+                        'position' => $emp->position ?? '-',
+                        'department' => $emp->department?->name ?? '-',
+                        'base_salary' => $emp->base_salary ?? 0,
+                        'status' => $emp->status ?? '-',
+                    ],
+                    'attendance' => $this->formatAttendanceRecords($attendanceRecords),
+                    'attendance_summary' => $this->calculateAttendanceSummary($attendanceRecords),
+                ];
+            }
+            return response()->json([
+                'all_employees' => true,
+                'employees' => $allData,
+                'generated_at' => now()->toIso8601String(),
+            ]);
         }
 
         $employee = Employee::with([
@@ -817,10 +852,12 @@ class ReportsController extends Controller
         });
 
         // Get attendance records for this employee
-        $attendanceRecords = \App\Models\AttendanceRecord::where('employee_id', $employee->id)
+        $attendanceQuery = \App\Models\AttendanceRecord::where('employee_id', $employee->id)
             ->orderBy('date', 'desc')
-            ->limit(100)
-            ->get();
+            ->limit(100);
+        if ($fromDate) $attendanceQuery->where('date', '>=', $fromDate);
+        if ($toDate) $attendanceQuery->where('date', '<=', $toDate);
+        $attendanceRecords = $attendanceQuery->get();
         
         $data = [
             'employee' => [
@@ -1165,5 +1202,42 @@ class ReportsController extends Controller
         if ($raw === null) return [];
         $data = is_array($raw) ? $raw : (is_array(json_decode($raw, true)) ? json_decode($raw, true) : []);
         return $data['brackets'] ?? $data;
+    }
+
+    private function formatAttendanceRecords($records): array
+    {
+        return $records->map(function ($r) {
+            return [
+                'id' => $r->id,
+                'date' => $r->date,
+                'check_in_time' => $r->check_in_time,
+                'check_in_type' => $r->check_in_type,
+                'check_in_delay_minutes' => $r->check_in_delay_minutes,
+                'check_out_time' => $r->check_out_time,
+                'check_out_type' => $r->check_out_type,
+                'worked_hours' => $r->worked_hours,
+                'expected_hours' => $r->expected_hours,
+                'has_delay' => $r->has_delay,
+                'is_absent' => $r->is_absent,
+                'delay_deduction' => $r->delay_deduction,
+                'early_leave_deduction' => $r->early_leave_deduction,
+                'absence_deduction' => $r->absence_deduction,
+                'total_deduction' => $r->total_deduction,
+                'delay_excused' => $r->delay_excused,
+                'absence_excused' => $r->absence_excused,
+                'warning_issued' => $r->warning_issued,
+            ];
+        })->toArray();
+    }
+
+    private function calculateAttendanceSummary($records): array
+    {
+        return [
+            'working_days' => $records->count(),
+            'on_time_days' => $records->where('check_in_type', 'on_time')->count(),
+            'late_days' => $records->where('check_in_type', 'late')->count(),
+            'absent_days' => $records->where('is_absent', true)->count(),
+            'total_deduction' => $records->sum('total_deduction'),
+        ];
     }
 }

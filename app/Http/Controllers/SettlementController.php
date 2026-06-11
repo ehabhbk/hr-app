@@ -174,7 +174,7 @@ class SettlementController extends Controller
                 $logoBase64 = base64_encode(file_get_contents($logoPath));
                 $logoExt = pathinfo($logoPath, PATHINFO_EXTENSION);
                 $logoMime = $logoExt === 'jpg' || $logoExt === 'jpeg' ? 'image/jpeg' : 'image/png';
-                $logoHtml = '<img src="data:' . $logoMime . ';base64,' . $logoBase64 . '" style="height:60px;width:60px;object-fit:contain;">';
+                $logoHtml = '<img src="data:' . $logoMime . ';base64,' . $logoBase64 . '" style="height:55px;width:55px;object-fit:contain;">';
             }
         }
         
@@ -185,45 +185,50 @@ class SettlementController extends Controller
                 $stampBase64 = base64_encode(file_get_contents($stampPath));
                 $stampExt = pathinfo($stampPath, PATHINFO_EXTENSION);
                 $stampMime = $stampExt === 'jpg' || $stampExt === 'jpeg' ? 'image/jpeg' : 'image/png';
-                $stampHtml = '<img src="data:' . $stampMime . ';base64,' . $stampBase64 . '" style="height:60px;width:60px;object-fit:contain;opacity:0.85;">';
+                $stampHtml = '<img src="data:' . $stampMime . ';base64,' . $stampBase64 . '" style="height:55px;width:55px;object-fit:contain;opacity:0.85;">';
             }
         }
         
-        $logoPlaceholder = '<div style="width:60px;height:60px;background:#f3f4f6;border:2px dashed #9ca3af;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:10px;">شعار</div>';
-        $stampPlaceholder = '<div style="width:60px;height:60px;border:2px dashed #9ca3af;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:8px;">ختم</div>';
+        $logoPlaceholder = '<div style="width:55px;height:55px;background:#f0f4ff;border:1px solid #c7d2fe;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#6366f1;font-size:9px;font-weight:bold;">شعار</div>';
+        $stampPlaceholder = '<div style="width:55px;height:55px;border:1.5px dashed #cbd5e1;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:7px;font-weight:bold;">ختم</div>';
         
         $html = '
         <style>
-            body { font-family: aealarabiya, sans-serif; direction: rtl; font-size: 10px; }
+            body { font-family: dejavusans, sans-serif; direction: rtl; font-size: 10px; color: #1e293b; }
             table { width: 100%; border-collapse: collapse; }
-            th, td { border: 1px solid #334155; padding: 6px; }
-            th { background: #1e40af; color: white; font-weight: bold; text-align: center; }
-            .header-table td { border: none; }
-            .section-header { background: #059669; color: white; padding: 8px; font-weight: bold; text-align: center; margin-top: 15px; }
+            th, td { border: 1px solid #cbd5e1; padding: 6px 8px; }
+            th { background: #1e3a5f; color: white; font-weight: bold; text-align: center; font-size: 10px; }
+            .header-table td { border: none; padding: 5px; vertical-align: middle; }
+            .section-header { background: #059669; color: white; padding: 8px 12px; font-weight: bold; text-align: center; margin: 15px 0 8px 0; font-size: 11px; border-radius: 6px 6px 0 0; }
+            .section-danger { background: #dc2626; color: white; padding: 8px 12px; font-weight: bold; text-align: center; margin: 15px 0 8px 0; font-size: 11px; border-radius: 6px 6px 0 0; }
+            .section-primary { background: #1e3a5f; color: white; padding: 8px 12px; font-weight: bold; text-align: center; margin: 15px 0 8px 0; font-size: 11px; border-radius: 6px 6px 0 0; }
             .total-row { background: #dcfce7; font-weight: bold; }
-            .deduct-row { background: #fee2e2; }
-            .net-row { background: #1e40af; color: white; font-weight: bold; }
+            .deduct-row { background: #fef2f2; }
+            .net-row { background: #1e3a5f; color: white; font-weight: bold; }
+            .net-row td { border-color: #334155; }
+            .row-even { background: #ffffff; }
+            .row-odd { background: #f8fafc; }
         </style>
         
         <table class="header-table">
             <tr>
-                <td style="width:70px;text-align:center;border:none;">' . ($logoHtml ?: $logoPlaceholder) . '</td>
-                <td style="text-align:center;border:none;padding:10px;">
-                    <h1 style="font-size:18px;margin:0;color:#1e40af;">' . htmlspecialchars($org['name'] ?? 'Jawda HR') . '</h1>
-                    <p style="font-size:10px;color:#666;margin:3px 0;">' . htmlspecialchars($org['address'] ?? '') . ' | ' . htmlspecialchars($org['phone'] ?? '') . '</p>
+                <td style="width:65px;text-align:center;">' . ($logoHtml ?: $logoPlaceholder) . '</td>
+                <td style="text-align:center;padding:5px 10px;">
+                    <h1 style="font-size:18px;margin:0;color:#1e3a5f;">' . htmlspecialchars($org['name'] ?? 'Jawda HR') . '</h1>
+                    <p style="font-size:9px;color:#64748b;margin:3px 0;">' . htmlspecialchars($org['address'] ?? '') . ' | ' . htmlspecialchars($org['phone'] ?? '') . '</p>
                 </td>
-                <td style="width:70px;border:none;"></td>
+                <td style="width:65px;"></td>
             </tr>
         </table>
-        <div style="height:3px;background:linear-gradient(to left,#1e40af,#3b82f6,#1e40af);margin:10px 0;"></div>
+        <div style="height:3px;background:linear-gradient(90deg,#1e3a5f,#3b82f6,#6366f1,#3b82f6,#1e3a5f);margin:8px 0 15px 0;border-radius:2px;"></div>
         
-        <div style="text-align:center;margin:15px 0;border:3px solid #1e40af;padding:15px;border-radius:10px;background:#eff6ff;">
-            <h2 style="font-size:16px;margin:0;color:#1e40af;">تسوية مستحقات الموظف</h2>
-            <p style="font-size:12px;margin:8px 0;font-weight:bold;">' . htmlspecialchars($employee->name) . '</p>
-            <p style="font-size:10px;margin:0;color:#64748b;">رقم المرجع: ' . $org['name'] . '-SETTLE-' . str_pad($employee->id, 4, '0', STR_PAD_LEFT) . '-' . date('Y') . '</p>
+        <div style="text-align:center;margin:15px 0;border:3px solid #1e3a5f;padding:15px;border-radius:10px;background:linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);">
+            <h2 style="font-size:16px;margin:0;color:#1e3a5f;">تسوية مستحقات الموظف</h2>
+            <p style="font-size:12px;margin:8px 0;font-weight:bold;color:#1e3a5f;">' . htmlspecialchars($employee->name) . '</p>
+            <p style="font-size:9px;margin:0;color:#64748b;">رقم المرجع: ' . $org['name'] . '-SETTLE-' . str_pad($employee->id, 4, '0', STR_PAD_LEFT) . '-' . date('Y') . '</p>
         </div>
         
-        <div class="section-header">اولا: معلومات الخدمة</div>
+        <div class="section-header">أولاً: معلومات الخدمة</div>
         <table>
             <tr>
                 <td style="width:25%;font-weight:bold;">الاسم:</td>
@@ -245,7 +250,7 @@ class SettlementController extends Controller
             </tr>
         </table>
         
-        <div class="section-header">ثانيا: بيانات المرتب</div>
+        <div class="section-header">ثانياً: بيانات المرتب</div>
         <table>
             <tr>
                 <td style="width:25%;font-weight:bold;">الراتب الأساسي:</td>
@@ -261,7 +266,7 @@ class SettlementController extends Controller
             </tr>
         </table>
         
-        <div class="section-header">ثالثا: المستحقات</div>
+        <div class="section-header">ثالثاً: المستحقات</div>
         <table>
             <thead>
                 <tr>
@@ -272,53 +277,53 @@ class SettlementController extends Controller
                 </tr>
             </thead>
             <tbody>
-                <tr>
+                <tr class="row-even">
                     <td>1</td>
                     <td>مكافأة إنهاء الخدمة</td>
                     <td>' . $settlement['years_of_service'] . ' سنة × ' . number_format($settlement['gross_salary'] / 12, 2) . '</td>
                     <td style="text-align:center;font-weight:bold;">' . number_format($settlement['severance_pay'], 2) . '</td>
                 </tr>
-                <tr>
+                <tr class="row-odd">
                     <td>2</td>
                     <td>تعويض فترة الإخطار</td>
                     <td>' . $settlement['notice_period_days'] . ' يوم × ' . number_format($settlement['daily_rate'], 2) . '</td>
                     <td style="text-align:center;font-weight:bold;">' . number_format($settlement['notice_period_amount'], 2) . '</td>
                 </tr>
-                <tr>
+                <tr class="row-even">
                     <td>3</td>
                     <td>استبدال الإجازات غير المستخدمة</td>
                     <td>' . $settlement['unused_leave_days'] . ' يوم × ' . number_format($settlement['daily_rate'], 2) . '</td>
                     <td style="text-align:center;font-weight:bold;">' . number_format($settlement['unused_leave_amount'], 2) . '</td>
                 </tr>
-                <tr>
+                <tr class="row-odd">
                     <td>4</td>
                     <td>بدل النقل المستحق</td>
                     <td>-</td>
                     <td style="text-align:center;font-weight:bold;">' . number_format($settlement['transport_allowance'], 2) . '</td>
                 </tr>
-                <tr>
+                <tr class="row-even">
                     <td>5</td>
                     <td>بدل السكن المستحق</td>
                     <td>-</td>
                     <td style="text-align:center;font-weight:bold;">' . number_format($settlement['housing_allowance'], 2) . '</td>
                 </tr>
-                <tr>
+                <tr class="row-odd">
                     <td>6</td>
                     <td>بدل الطعام المستحق</td>
                     <td>-</td>
                     <td style="text-align:center;font-weight:bold;">' . number_format($settlement['food_allowance'], 2) . '</td>
                 </tr>
                 <tr class="total-row">
-                    <td colspan="3">إجمالي المستحقات</td>
+                    <td colspan="3" style="text-align:center;">إجمالي المستحقات</td>
                     <td style="text-align:center;">' . number_format($settlement['total_due'], 2) . '</td>
                 </tr>
             </tbody>
         </table>
         
-        <div class="section-header" style="background:#dc2626;">رابعا: الخصومات</div>
+        <div class="section-danger">رابعاً: الخصومات</div>
         <table>
             <thead>
-                <tr>
+                <tr style="background:#dc2626;">
                     <th style="width:5%;">#</th>
                     <th style="width:50%;">البند</th>
                     <th style="width:20%;">التفاصيل</th>
@@ -332,14 +337,14 @@ class SettlementController extends Controller
                     <td>أقساط متبقية</td>
                     <td style="text-align:center;font-weight:bold;color:#dc2626;">' . number_format($settlement['remaining_advances'], 2) . '</td>
                 </tr>
-                <tr class="deduct-row">
-                    <td colspan="3">إجمالي الخصومات</td>
+                <tr style="background:#fee2e2;font-weight:bold;">
+                    <td colspan="3" style="text-align:center;">إجمالي الخصومات</td>
                     <td style="text-align:center;">' . number_format($settlement['total_deduct'], 2) . '</td>
                 </tr>
             </tbody>
         </table>
         
-        <div class="section-header" style="background:#1e40af;">خامسا: صافي التسوية</div>
+        <div class="section-primary">خامساً: صافي التسوية</div>
         <table>
             <tr class="net-row">
                 <td style="width:75%;text-align:center;font-size:14px;">صافي المستحقات بعد الخصومات</td>
@@ -347,31 +352,36 @@ class SettlementController extends Controller
             </tr>
         </table>
         
-        <div style="margin-top:30px;">
-            <table style="width:100%;border:none;">
+        <div style="margin-top:25px;page-break-inside:avoid;">
+            <div style="height:1.5px;background:linear-gradient(90deg,transparent,#cbd5e1,transparent);margin:12px 0;"></div>
+            <table style="width:100%;border:none;border-collapse:collapse;">
                 <tr>
-                    <td style="width:33%;text-align:center;border:none;vertical-align:top;">
-                        <div style="min-height:60px;display:flex;align-items:center;justify-content:center;">' . ($stampHtml ?: $stampPlaceholder) . '</div>
-                        <p style="font-size:9px;color:#374151;margin:5px 0 0 0;">ختم المؤسسة</p>
+                    <td style="width:30%;text-align:center;border:none;vertical-align:top;padding:5px;">
+                        <div style="min-height:65px;display:flex;align-items:center;justify-content:center;">' . ($stampHtml ?: $stampPlaceholder) . '</div>
+                        <p style="font-size:8px;color:#64748b;margin:4px 0 0 0;">ختم المؤسسة</p>
                     </td>
-                    <td style="width:33%;text-align:center;border:none;vertical-align:top;">
-                        <div style="border-bottom:2px solid #1e40af;width:100px;height:30px;margin:0 auto;"></div>
-                        <p style="font-size:9px;color:#374151;margin:5px 0 0 0;">مدير الموارد البشرية</p>
-                        <p style="font-size:8px;color:#6b7280;margin:2px 0;">الاسم: ........................</p>
-                        <p style="font-size:8px;color:#6b7280;margin:2px 0;">التوقيع: ....................</p>
+                    <td style="width:35%;text-align:center;border:none;vertical-align:top;padding:5px;">
+                        <div style="border-bottom:1.5px solid #1e3a5f;width:120px;height:30px;margin:0 auto;"></div>
+                        <p style="font-size:9px;color:#1e3a5f;margin:5px 0 0 0;font-weight:bold;">مدير الموارد البشرية</p>
+                        <p style="font-size:7px;color:#94a3b8;margin:2px 0;">الاسم: ........................</p>
+                        <p style="font-size:7px;color:#94a3b8;margin:2px 0;">التوقيع: ....................</p>
+                        <p style="font-size:7px;color:#94a3b8;margin:2px 0;">التاريخ: ....................</p>
                     </td>
-                    <td style="width:33%;text-align:center;border:none;vertical-align:top;">
-                        <div style="border-bottom:2px solid #059669;width:100px;height:30px;margin:0 auto;"></div>
-                        <p style="font-size:9px;color:#374151;margin:5px 0 0 0;">المدير العام</p>
-                        <p style="font-size:8px;color:#6b7280;margin:2px 0;">الاسم: ........................</p>
-                        <p style="font-size:8px;color:#6b7280;margin:2px 0;">التوقيع: ....................</p>
+                    <td style="width:35%;text-align:center;border:none;vertical-align:top;padding:5px;">
+                        <div style="border-bottom:1.5px solid #059669;width:120px;height:30px;margin:0 auto;"></div>
+                        <p style="font-size:9px;color:#059669;margin:5px 0 0 0;font-weight:bold;">المدير العام</p>
+                        <p style="font-size:7px;color:#94a3b8;margin:2px 0;">الاسم: ........................</p>
+                        <p style="font-size:7px;color:#94a3b8;margin:2px 0;">التوقيع: ....................</p>
+                        <p style="font-size:7px;color:#94a3b8;margin:2px 0;">التاريخ: ....................</p>
                     </td>
                 </tr>
             </table>
         </div>
         
-        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:8px;margin-top:15px;text-align:center;">
-            <p style="font-size:8px;color:#64748b;margin:0;">Jawda HR - نظام إدارة الموارد البشرية | تاريخ الطباعة: ' . now()->format('Y-m-d H:i') . '</p>
+        <div style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:6px 12px;margin-top:12px;text-align:center;">
+            <p style="font-size:7px;color:#64748b;margin:0;">
+                <strong>Jawda HR</strong> — نظام إدارة الموارد البشرية | تاريخ الطباعة: ' . now()->format('Y-m-d H:i') . '
+            </p>
         </div>
         ';
         

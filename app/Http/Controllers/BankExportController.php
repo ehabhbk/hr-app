@@ -152,8 +152,8 @@ class BankExportController extends Controller
         $bankName = BankExport::getBankNameArabic($export->bank_name);
 
         $pdf = new \TCPDF('L', 'mm', 'A4', true, 'UTF-8', false);
-        $pdf->SetCreator(PDF_CREATOR);
-        $pdf->SetAuthor('HR System');
+        $pdf->SetCreator('Jawda HR');
+        $pdf->SetAuthor($orgData['name'] ?? 'HR System');
         $pdf->SetTitle("كشف تحويل مرتبات - {$bankName}");
         $pdf->setRTL(true);
         $pdf->setPrintHeader(false);
@@ -164,15 +164,25 @@ class BankExportController extends Controller
 
         // Header
         $pdf->SetFont('aealarabiya', '', 20);
+        $pdf->SetTextColor(30, 58, 95);
         $pdf->Cell(0, 12, "كشف تحويل مرتبات - {$bankName}", 0, 1, 'C');
         $pdf->SetFont('aealarabiya', '', 14);
+        $pdf->SetTextColor(71, 85, 105);
         $orgName = $orgData['name'] ?? '';
         if ($orgName) {
             $pdf->Cell(0, 8, $orgName, 0, 1, 'C');
         }
         $pdf->Cell(0, 8, "الشهر: {$monthLabel} {$year}", 0, 1, 'C');
-        $pdf->Cell(0, 8, "تاريخ الطباعة: " . now()->format('Y-m-d H:i:s'), 0, 1, 'C');
-        $pdf->Ln(4);
+        $pdf->SetTextColor(100, 116, 139);
+        $pdf->SetFont('aealarabiya', '', 10);
+        $pdf->Cell(0, 6, "تاريخ الطباعة: " . now()->format('Y-m-d H:i:s'), 0, 1, 'C');
+        $pdf->Ln(3);
+
+        // Separator line
+        $pdf->SetDrawColor(30, 58, 95);
+        $pdf->SetLineWidth(0.5);
+        $pdf->Line(5, $pdf->GetY(), 292, $pdf->GetY());
+        $pdf->Ln(5);
 
         // Table columns
         $rowH = 10;
@@ -184,7 +194,7 @@ class BankExportController extends Controller
         $pageHeight = $pdf->getPageHeight();
 
         $drawHeader = function() use ($pdf, $cols, $headerLabels, $headerH) {
-            $pdf->SetFillColor(79, 70, 229);
+            $pdf->SetFillColor(30, 58, 95);
             $pdf->SetTextColor(255, 255, 255);
             $pdf->SetFont('aealarabiya', '', 14);
             for ($i = 0; $i < count($headerLabels); $i++) {
@@ -204,9 +214,13 @@ class BankExportController extends Controller
             // Page break check
             if ($pdf->GetY() + $rowH > $pageHeight - $bottomMargin) {
                 $pdf->AddPage();
-                $pdf->SetFont('aealarabiya', '', 20);
+                $pdf->SetFont('aealarabiya', '', 18);
+                $pdf->SetTextColor(30, 58, 95);
                 $pdf->Cell(0, 10, "كشف تحويل مرتبات - {$bankName} (تابع)", 0, 1, 'C');
-                $pdf->Ln(3);
+                $pdf->SetTextColor(71, 85, 105);
+                $pdf->SetFont('aealarabiya', '', 10);
+                $pdf->Cell(0, 6, $orgName, 0, 1, 'C');
+                $pdf->Ln(2);
                 $drawHeader();
                 $pdf->SetTextColor(0, 0, 0);
                 $pdf->SetFont('aealarabiya', '', 13);
@@ -216,12 +230,19 @@ class BankExportController extends Controller
             $netSalary = (float)($s['net_salary'] ?? 0);
             $calculatedTotal += $netSalary;
 
-            $pdf->Cell($cols[0], $rowH, (string)$idx, 1, 0, 'C');
-            $pdf->Cell($cols[1], $rowH, $emp->name ?? '-', 1, 0, 'C');
-            $pdf->Cell($cols[2], $rowH, $emp->position ?? '-', 1, 0, 'C');
-            $pdf->Cell($cols[3], $rowH, $emp->department->name ?? '-', 1, 0, 'C');
-            $pdf->Cell($cols[4], $rowH, $emp->bank_account ?? '-', 1, 0, 'C');
-            $pdf->Cell($cols[5], $rowH, number_format($netSalary, 2) . ' ج.س', 1, 0, 'C');
+            // Alternating row colors
+            if ($idx % 2 === 0) {
+                $pdf->SetFillColor(248, 250, 252);
+            } else {
+                $pdf->SetFillColor(255, 255, 255);
+            }
+
+            $pdf->Cell($cols[0], $rowH, (string)$idx, 1, 0, 'C', true);
+            $pdf->Cell($cols[1], $rowH, $emp->name ?? '-', 1, 0, 'C', true);
+            $pdf->Cell($cols[2], $rowH, $emp->position ?? '-', 1, 0, 'C', true);
+            $pdf->Cell($cols[3], $rowH, $emp->department->name ?? '-', 1, 0, 'C', true);
+            $pdf->Cell($cols[4], $rowH, $emp->bank_account ?? '-', 1, 0, 'C', true);
+            $pdf->Cell($cols[5], $rowH, number_format($netSalary, 2) . ' ج.س', 1, 0, 'C', true);
             $pdf->Ln();
             $idx++;
         }

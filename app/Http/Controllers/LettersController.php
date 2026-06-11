@@ -103,9 +103,9 @@ class LettersController extends Controller
             $logoBase64 = base64_encode(file_get_contents($data['organization']['logo_url']));
             $logoExt = pathinfo($data['organization']['logo_url'], PATHINFO_EXTENSION);
             $logoMime = 'image/' . ($logoExt === 'jpg' ? 'jpeg' : $logoExt);
-            $logoHtml = '<img src="data:' . $logoMime . ';base64,' . $logoBase64 . '" style="height:65px;width:65px;object-fit:contain;">';
+            $logoHtml = '<img src="data:' . $logoMime . ';base64,' . $logoBase64 . '" style="height:55px;width:55px;object-fit:contain;">';
         } elseif (!empty($data['organization']['logo_web_url'])) {
-            $logoHtml = '<img src="' . $data['organization']['logo_web_url'] . '" style="height:65px;width:65px;object-fit:contain;">';
+            $logoHtml = '<img src="' . $data['organization']['logo_web_url'] . '" style="height:55px;width:55px;object-fit:contain;">';
         }
         
         $stampHtml = '';
@@ -113,9 +113,9 @@ class LettersController extends Controller
             $stampBase64 = base64_encode(file_get_contents($data['organization']['stamp_url']));
             $stampExt = pathinfo($data['organization']['stamp_url'], PATHINFO_EXTENSION);
             $stampMime = 'image/' . ($stampExt === 'jpg' ? 'jpeg' : $stampExt);
-            $stampHtml = '<img src="data:' . $stampMime . ';base64,' . $stampBase64 . '" style="height:65px;width:65px;object-fit:contain;opacity:0.85;">';
+            $stampHtml = '<img src="data:' . $stampMime . ';base64,' . $stampBase64 . '" style="height:55px;width:55px;object-fit:contain;opacity:0.85;">';
         } elseif (!empty($data['organization']['stamp_web_url'])) {
-            $stampHtml = '<img src="' . $data['organization']['stamp_web_url'] . '" style="height:65px;width:65px;object-fit:contain;opacity:0.85;">';
+            $stampHtml = '<img src="' . $data['organization']['stamp_web_url'] . '" style="height:55px;width:55px;object-fit:contain;opacity:0.85;">';
         }
         
         $body = $content['body'] ?? '';
@@ -135,77 +135,84 @@ class LettersController extends Controller
                 $body
             );
         } else {
-            $body = str_replace("<div class='signature-stamp' data-stamp='hr'></div>", '<div style="height:70px;display:flex;align-items:center;justify-content:center;"><div style="width:60px;height:60px;border:2px dashed #9ca3af;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:8px;">ختم</div></div>', $body);
-            $body = str_replace("<div class='signature-stamp' data-stamp='manager'></div>", '<div style="height:70px;display:flex;align-items:center;justify-content:center;"><div style="width:60px;height:60px;border:2px dashed #9ca3af;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:8px;">ختم</div></div>', $body);
+            $body = str_replace("<div class='signature-stamp' data-stamp='hr'></div>", '<div style="height:65px;display:flex;align-items:center;justify-content:center;"><div style="width:55px;height:55px;border:1.5px dashed #cbd5e1;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:7px;font-weight:bold;">ختم</div></div>', $body);
+            $body = str_replace("<div class='signature-stamp' data-stamp='manager'></div>", '<div style="height:65px;display:flex;align-items:center;justify-content:center;"><div style="width:55px;height:55px;border:1.5px dashed #cbd5e1;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:7px;font-weight:bold;">ختم</div></div>', $body);
         }
         
-        $logoPlaceholder = '<div style="width:70px;height:70px;background:#f3f4f6;border:2px dashed #9ca3af;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:10px;">شعار</div>';
+        $logoPlaceholder = '<div style="width:55px;height:55px;background:#f0f4ff;border:1px solid #c7d2fe;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#6366f1;font-size:9px;font-weight:bold;">شعار</div>';
         
         $html = '
         <style>
             body { 
-                font-family: aealarabiya, sans-serif; 
+                font-family: dejavusans, sans-serif; 
                 font-size: 12px; 
-                line-height: 1.8; 
+                line-height: 2; 
                 text-align: right;
                 margin: 0;
                 padding: 20px;
+                color: #1e293b;
             }
             .org-header-table { 
                 width: 100%;
                 border: none;
-                margin-bottom: 15px;
+                border-collapse: collapse;
+                margin-bottom: 12px;
             }
             .org-header-table td {
                 border: none;
                 vertical-align: middle;
+                padding: 5px;
             }
             .header-gradient {
                 height: 3px;
-                background: linear-gradient(to left,#1e40af,#3b82f6,#1e40af);
-                margin: 10px 0;
+                background: linear-gradient(90deg, #1e3a5f, #3b82f6, #6366f1, #3b82f6, #1e3a5f);
+                margin: 8px 0 15px 0;
                 border-radius: 2px;
             }
             .org-name { 
-                font-size: 20px; 
+                font-size: 18px; 
                 font-weight: bold; 
-                color: #1e40af;
+                color: #1e3a5f;
                 margin: 0;
+                letter-spacing: 0.5px;
             }
             .org-subtitle {
-                font-size: 10px;
-                color: #4b5563;
+                font-size: 9px;
+                color: #64748b;
                 margin: 3px 0;
             }
             .letter-title {
                 text-align: center;
                 margin: 20px 0;
                 padding: 15px;
-                border: 3px solid #1e40af;
-                background: #eff6ff;
+                border: 3px solid #1e3a5f;
+                background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
                 border-radius: 10px;
             }
             .letter-title h2 {
                 font-size: 18px;
                 margin: 0;
-                color: #1e40af;
+                color: #1e3a5f;
             }
             .recipient-info { 
                 margin: 15px 0; 
                 padding: 12px;
-                background: #f1f5f9;
+                background: #f8fafc;
+                border: 1px solid #e2e8f0;
                 border-radius: 8px;
             }
             .subject-box { 
                 margin: 15px 0; 
-                padding: 12px; 
+                padding: 10px 15px; 
                 background: #fef3c7;
                 border-right: 4px solid #d97706;
+                border-radius: 4px;
             }
             .subject-box strong { color: #92400e; }
             .content-body { 
                 text-align: justify; 
-                margin: 15px 0; 
+                margin: 20px 0; 
+                line-height: 2;
             }
             .signature-section { 
                 margin-top: 40px; 
@@ -220,32 +227,35 @@ class LettersController extends Controller
             .signature-right { float: left; }
             .signature-title {
                 font-weight: bold;
-                font-size: 13px;
+                font-size: 12px;
                 margin-bottom: 8px;
-                color: #1e40af;
+                color: #1e3a5f;
             }
             .signature-line {
-                border-bottom: 2px solid #1e40af;
+                border-bottom: 1.5px solid #1e3a5f;
                 width: 120px;
                 margin: 0 auto 5px auto;
             }
             .stamp-area {
                 margin-top: 8px;
-                min-height: 70px;
+                min-height: 65px;
                 display: flex;
                 align-items: center;
                 justify-content: center;
             }
             .border-box { 
-                border: 2px solid #333; 
+                border: 2px solid #cbd5e1; 
                 padding: 15px; 
                 margin: 15px 0; 
+                border-radius: 8px;
             }
             .clear { clear: both; }
             .text-center { text-align: center; }
             .text-right { text-align: right; }
             .text-lg { font-size: 13px; }
+            .text-xl { font-size: 15px; }
             .text-2xl { font-size: 18px; }
+            .text-3xl { font-size: 22px; }
             .font-bold { font-weight: bold; }
             .mb-4 { margin-bottom: 10px; }
             .mb-6 { margin-bottom: 15px; }
@@ -256,43 +266,55 @@ class LettersController extends Controller
             .my-4 { margin-top: 10px; margin-bottom: 10px; }
             .mr-8 { margin-right: 20px; }
             .border-2 { border-width: 2px; }
-            .border-black { border-color: #000; }
+            .border-black { border-color: #1e293b; }
+            .w-full { width: 100%; }
+            .bg-gray-50 { background: #f8fafc; }
             ul, ol { margin: 10px 0; }
-            li { margin: 5px 0; }
-            p { margin: 6px 0; }
+            li { margin: 5px 0; line-height: 1.8; }
+            p { margin: 8px 0; }
             .salutation { margin: 10px 0; }
-            .content { margin: 10px 0; }
-            .closing { margin: 10px 0; }
-            .signature { margin-top: 25px; }
+            .content { margin: 15px 0; line-height: 2; }
+            .closing { margin: 15px 0; }
+            .signature { margin-top: 30px; }
+            table.w-full { border-collapse: collapse; width: 100%; }
+            table.w-full td { padding: 8px; }
+            .border { border: 1px solid #e2e8f0; }
+            .p-2 { padding: 8px; }
+            .p-3 { padding: 10px; }
+            .p-4 { padding: 12px; }
+            .flex { display: flex; }
+            .justify-between { justify-content: space-between; }
             .footer-divider {
-                height: 2px;
-                background: #e5e7eb;
+                height: 1.5px;
+                background: linear-gradient(90deg, transparent, #cbd5e1, transparent);
                 margin: 20px 0;
             }
             .footer-info {
-                background: #f8fafc;
+                background: #f1f5f9;
                 border: 1px solid #e2e8f0;
-                border-radius: 4px;
-                padding: 8px;
-                margin-top: 15px;
+                border-radius: 6px;
+                padding: 6px 12px;
+                margin-top: 12px;
                 text-align: center;
             }
+            .letter-header p { margin: 3px 0; }
+            hr { border: none; border-top: 1px solid #e2e8f0; }
         </style>
         
         <table class="org-header-table">
             <tr>
-                <td style="width:80px;text-align:center;">
+                <td style="width:65px;text-align:center;">
                     ' . ($logoHtml ?: $logoPlaceholder) . '
                 </td>
-                <td style="text-align:center;padding:10px 20px;">
+                <td style="text-align:center;padding:5px 10px;">
                     <h1 class="org-name">' . htmlspecialchars($data['organization']['name']) . '</h1>
                     <p class="org-subtitle">
                         ' . ($data['organization']['address'] ? 'العنوان: ' . htmlspecialchars($data['organization']['address']) : '') . '
                         ' . ($data['organization']['phone'] ? ' | هاتف: ' . htmlspecialchars($data['organization']['phone']) : '') . '
                     </p>
-                    ' . ($data['organization']['email'] ? '<p class="org-subtitle">البريد: ' . htmlspecialchars($data['organization']['email']) . '</p>' : '') . '
+                    ' . ($data['organization']['email'] ? '<p class="org-subtitle">بريد: ' . htmlspecialchars($data['organization']['email']) . '</p>' : '') . '
                 </td>
-                <td style="width:80px;"></td>
+                <td style="width:65px;"></td>
             </tr>
         </table>
         <div class="header-gradient"></div>
@@ -305,32 +327,32 @@ class LettersController extends Controller
         
         <div class="footer-divider"></div>
         
-        <table style="width:100%;border:none;margin-top:20px;">
+        <table style="width:100%;border:none;margin-top:20px;border-collapse:collapse;">
             <tr>
-                <td style="width:33%;text-align:center;border:none;vertical-align:top;">
-                    <div class="stamp-area">' . ($stampHtml ?: '<div style="width:60px;height:60px;border:2px dashed #9ca3af;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:8px;">ختم</div>') . '</div>
-                    <p style="font-size:9px;color:#374151;margin:5px 0 0 0;">ختم المؤسسة</p>
+                <td style="width:30%;text-align:center;border:none;vertical-align:top;padding:5px;">
+                    <div class="stamp-area">' . ($stampHtml ?: '<div style="width:55px;height:55px;border:1.5px dashed #cbd5e1;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:7px;font-weight:bold;">ختم</div>') . '</div>
+                    <p style="font-size:8px;color:#64748b;margin:4px 0 0 0;">ختم المؤسسة</p>
                 </td>
-                <td style="width:33%;text-align:center;border:none;vertical-align:top;">
-                    <div class="signature-line"></div>
-                    <p class="signature-title">مدير الموارد البشرية</p>
-                    <p style="font-size:8px;color:#6b7280;margin:2px 0;">الاسم: ........................</p>
-                    <p style="font-size:8px;color:#6b7280;margin:2px 0;">التوقيع: ....................</p>
-                    <p style="font-size:8px;color:#6b7280;margin:2px 0;">التاريخ: ....................</p>
+                <td style="width:35%;text-align:center;border:none;vertical-align:top;padding:5px;">
+                    <div class="signature-line" style="border-bottom:1.5px solid #1e3a5f;width:120px;"></div>
+                    <p class="signature-title" style="font-size:10px;">مدير الموارد البشرية</p>
+                    <p style="font-size:7px;color:#94a3b8;margin:2px 0;">الاسم: ........................</p>
+                    <p style="font-size:7px;color:#94a3b8;margin:2px 0;">التوقيع: ....................</p>
+                    <p style="font-size:7px;color:#94a3b8;margin:2px 0;">التاريخ: ....................</p>
                 </td>
-                <td style="width:33%;text-align:center;border:none;vertical-align:top;">
-                    <div class="signature-line" style="border-bottom-color:#059669;"></div>
-                    <p class="signature-title" style="color:#059669;">المدير العام</p>
-                    <p style="font-size:8px;color:#6b7280;margin:2px 0;">الاسم: ........................</p>
-                    <p style="font-size:8px;color:#6b7280;margin:2px 0;">التوقيع: ....................</p>
-                    <p style="font-size:8px;color:#6b7280;margin:2px 0;">التاريخ: ....................</p>
+                <td style="width:35%;text-align:center;border:none;vertical-align:top;padding:5px;">
+                    <div class="signature-line" style="border-bottom:1.5px solid #059669;width:120px;"></div>
+                    <p class="signature-title" style="font-size:10px;color:#059669;">المدير العام</p>
+                    <p style="font-size:7px;color:#94a3b8;margin:2px 0;">الاسم: ........................</p>
+                    <p style="font-size:7px;color:#94a3b8;margin:2px 0;">التوقيع: ....................</p>
+                    <p style="font-size:7px;color:#94a3b8;margin:2px 0;">التاريخ: ....................</p>
                 </td>
             </tr>
         </table>
         
         <div class="footer-info">
-            <p style="font-size:8px;color:#64748b;margin:0;">
-                Jawda HR - نظام إدارة الموارد البشرية | تاريخ الطباعة: ' . now()->format('Y-m-d H:i') . '
+            <p style="font-size:7px;color:#64748b;margin:0;">
+                <strong>Jawda HR</strong> — نظام إدارة الموارد البشرية | تاريخ الطباعة: ' . now()->format('Y-m-d H:i') . '
             </p>
         </div>
         
@@ -1075,7 +1097,7 @@ class LettersController extends Controller
             'subject' => "خطاب إشادة - {$data['employee']['name']}",
             'body' => "
                 <div class='text-center mb-8'>
-                    <p class='text-2xl font-bold mb-4'>🏆 خطاب إشادة وتقدير</p>
+                    <p class='text-2xl font-bold mb-4'>خطاب إشادة وتقدير</p>
                     <p class='text-lg'>( Letter of Commendation )</p>
                     <p class='mt-2'>الرقم المرجعي: {$data['organization']['name']}-CMM-" . str_pad($data['employee']['id'], 4, '0', STR_PAD_LEFT) . "-" . date('Y') . "</p>
                     <p>التاريخ: {$data['date_formatted']}</p>
@@ -1086,8 +1108,8 @@ class LettersController extends Controller
                     <p>{$data['employee']['department']} - {$data['employee']['job_title']}</p>
                 </div>
                 <div class='content mb-6'>
-                    <p class='mb-4 text-center font-bold text-xl'>🌟 تهانينا! 🌟</p>
-                    <p class='mb-4'>يسعدنا أن نُinformedك أننا قد شهدنا منك <strong>{$reason}</strong>.</p>
+                    <p class='mb-4 text-center font-bold text-xl'>تهانينا!</p>
+                    <p class='mb-4'>يسعدنا أن نُعلمكم أننا قد شهدنا منك <strong>{$reason}</strong>.</p>
                     <p class='mb-4'>تفاصيل: {$details}</p>
                     <p class='mb-4'>إن مساهمتكم تُعد نموذجاً يُحتذى به، ونسأل الله أن يوفقكم دائماً.</p>
                     <p>نفتخر بوجودكم ضمن فريقنا.</p>

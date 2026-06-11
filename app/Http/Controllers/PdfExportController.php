@@ -64,71 +64,90 @@ trait PdfHelpersTrait
 
     protected function getOfficialHeaderHtml($org)
     {
-        $logoHtml = $this->getLogoHtml($org, 65);
+        $logoHtml = $this->getLogoHtml($org, 55);
         $orgName = htmlspecialchars($org['name'] ?? 'Jawda HR');
         $orgAddress = htmlspecialchars($org['address'] ?? '');
         $orgPhone = htmlspecialchars($org['phone'] ?? '');
         $orgEmail = htmlspecialchars($org['email'] ?? '');
         $taxNumber = htmlspecialchars($org['tax_number'] ?? '');
 
-        $logoPlaceholder = '<div style="width:70px;height:70px;background:#f3f4f6;border:2px dashed #9ca3af;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:10px;">شعار</div>';
+        $logoPlaceholder = '<div style="width:55px;height:55px;background:#f0f4ff;border:1px solid #c7d2fe;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#6366f1;font-size:9px;font-weight:bold;">شعار</div>';
+
+        $infoParts = array_filter([
+            $orgAddress ? 'العنوان: ' . $orgAddress : null,
+            $orgPhone ? 'هاتف: ' . $orgPhone : null,
+            $orgEmail ? 'بريد: ' . $orgEmail : null,
+        ]);
 
         return '
-        <table style="width:100%;border:none;margin-bottom:15px;">
+        <table style="width:100%;border:none;margin-bottom:12px;border-collapse:collapse;">
             <tr>
-                <td style="width:80px;text-align:center;border:none;vertical-align:middle;">
+                <td style="width:65px;text-align:center;border:none;vertical-align:middle;padding:5px;">
                     ' . ($logoHtml ?: $logoPlaceholder) . '
                 </td>
-                <td style="text-align:center;border:none;padding:10px 20px;">
-                    <h1 style="font-size:20px;margin:0;color:#1e40af;font-weight:bold;">' . $orgName . '</h1>
-                    <p style="font-size:11px;color:#4b5563;margin:3px 0;">
-                        ' . ($orgAddress ? 'العنوان: ' . $orgAddress : '') . ' ' . ($orgPhone ? ' | هاتف: ' . $orgPhone : '') . '
-                    </p>
-                    ' . ($orgEmail ? '<p style="font-size:10px;color:#6b7280;margin:2px 0;">البريد: ' . $orgEmail . '</p>' : '') . '
-                    ' . ($taxNumber ? '<p style="font-size:10px;color:#6b7280;margin:2px 0;">الرقم الضريبي: ' . $taxNumber . '</p>' : '') . '
+                <td style="border:none;padding:5px 10px;vertical-align:middle;">
+                    <table style="width:100%;border:none;border-collapse:collapse;">
+                        <tr>
+                            <td style="text-align:center;border:none;">
+                                <h1 style="font-size:18px;margin:0;color:#1e3a5f;font-weight:bold;letter-spacing:0.5px;">' . $orgName . '</h1>
+                            </td>
+                        </tr>
+                        ' . (!empty($infoParts) ? '
+                        <tr>
+                            <td style="text-align:center;border:none;">
+                                <p style="font-size:9px;color:#64748b;margin:3px 0 0 0;">' . implode(' &nbsp;|&nbsp; ', $infoParts) . '</p>
+                            </td>
+                        </tr>' : '') . '
+                        ' . ($taxNumber ? '
+                        <tr>
+                            <td style="text-align:center;border:none;">
+                                <p style="font-size:8px;color:#94a3b8;margin:2px 0 0 0;">الرقم الضريبي: ' . $taxNumber . '</p>
+                            </td>
+                        </tr>' : '') . '
+                    </table>
                 </td>
-                <td style="width:80px;border:none;"></td>
+                <td style="width:65px;border:none;"></td>
             </tr>
         </table>
-        <div style="height:3px;background:linear-gradient(to left,#1e40af,#3b82f6,#1e40af);margin:10px 0;border-radius:2px;"></div>';
+        <div style="height:3px;background:linear-gradient(90deg,#1e3a5f,#3b82f6,#6366f1,#3b82f6,#1e3a5f);margin:8px 0 15px 0;border-radius:2px;"></div>';
     }
 
     protected function getOfficialFooterHtml($org)
     {
-        $stampHtml = $this->getStampHtml($org, 65);
+        $stampHtml = $this->getStampHtml($org, 60);
 
-        $stampPlaceholder = '<div style="width:60px;height:60px;background:#f3f4f6;border:2px dashed #9ca3af;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:8px;">ختم</div>';
+        $stampPlaceholder = '<div style="width:55px;height:55px;background:#f8fafc;border:1.5px dashed #cbd5e1;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:7px;font-weight:bold;">ختم</div>';
 
         return '
-        <div style="margin-top:30px;page-break-inside:avoid;">
-            <div style="height:2px;background:#e5e7eb;margin:15px 0;"></div>
-            <table style="width:100%;border:none;">
+        <div style="margin-top:25px;page-break-inside:avoid;">
+            <div style="height:1.5px;background:linear-gradient(90deg,transparent,#cbd5e1,transparent);margin:12px 0;"></div>
+            <table style="width:100%;border:none;border-collapse:collapse;">
                 <tr>
-                    <td style="width:33%;text-align:center;border:none;vertical-align:top;">
-                        <div style="min-height:75px;display:flex;align-items:center;justify-content:center;">
+                    <td style="width:30%;text-align:center;border:none;vertical-align:top;padding:5px;">
+                        <div style="min-height:65px;display:flex;align-items:center;justify-content:center;">
                             ' . ($stampHtml ?: $stampPlaceholder) . '
                         </div>
-                        <p style="font-size:9px;color:#374151;margin:5px 0 0 0;">ختم المؤسسة</p>
+                        <p style="font-size:8px;color:#64748b;margin:4px 0 0 0;">ختم المؤسسة</p>
                     </td>
-                    <td style="width:33%;text-align:center;border:none;vertical-align:top;">
-                        <div style="border-bottom:2px solid #1e40af;width:120px;height:40px;margin:0 auto;"></div>
-                        <p style="font-size:9px;color:#374151;margin:5px 0 0 0;">مدير الموارد البشرية</p>
-                        <p style="font-size:8px;color:#6b7280;margin:2px 0;">الاسم: ........................</p>
-                        <p style="font-size:8px;color:#6b7280;margin:2px 0;">التوقيع: ....................</p>
-                        <p style="font-size:8px;color:#6b7280;margin:2px 0;">التاريخ: ....................</p>
+                    <td style="width:40%;text-align:center;border:none;vertical-align:top;padding:5px;">
+                        <div style="border-bottom:1.5px solid #1e3a5f;width:140px;height:35px;margin:0 auto;"></div>
+                        <p style="font-size:9px;color:#1e3a5f;margin:5px 0 0 0;font-weight:bold;">مدير الموارد البشرية</p>
+                        <p style="font-size:7px;color:#94a3b8;margin:2px 0;">الاسم: ........................</p>
+                        <p style="font-size:7px;color:#94a3b8;margin:2px 0;">التوقيع: ....................</p>
+                        <p style="font-size:7px;color:#94a3b8;margin:2px 0;">التاريخ: ....................</p>
                     </td>
-                    <td style="width:33%;text-align:center;border:none;vertical-align:top;">
-                        <div style="border-bottom:2px solid #059669;width:120px;height:40px;margin:0 auto;"></div>
-                        <p style="font-size:9px;color:#374151;margin:5px 0 0 0;">المدير العام</p>
-                        <p style="font-size:8px;color:#6b7280;margin:2px 0;">الاسم: ........................</p>
-                        <p style="font-size:8px;color:#6b7280;margin:2px 0;">التوقيع: ....................</p>
-                        <p style="font-size:8px;color:#6b7280;margin:2px 0;">التاريخ: ....................</p>
+                    <td style="width:30%;text-align:center;border:none;vertical-align:top;padding:5px;">
+                        <div style="border-bottom:1.5px solid #059669;width:140px;height:35px;margin:0 auto;"></div>
+                        <p style="font-size:9px;color:#059669;margin:5px 0 0 0;font-weight:bold;">المدير العام</p>
+                        <p style="font-size:7px;color:#94a3b8;margin:2px 0;">الاسم: ........................</p>
+                        <p style="font-size:7px;color:#94a3b8;margin:2px 0;">التوقيع: ....................</p>
+                        <p style="font-size:7px;color:#94a3b8;margin:2px 0;">التاريخ: ....................</p>
                     </td>
                 </tr>
             </table>
-            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:8px;margin-top:15px;text-align:center;">
-                <p style="font-size:8px;color:#64748b;margin:0;">
-                    Jawda HR - نظام إدارة الموارد البشرية | تاريخ الطباعة: ' . now()->format('Y-m-d H:i') . '
+            <div style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:6px 12px;margin-top:12px;text-align:center;">
+                <p style="font-size:7px;color:#64748b;margin:0;">
+                    <strong>Jawda HR</strong> — نظام إدارة الموارد البشرية | تاريخ الطباعة: ' . now()->format('Y-m-d H:i') . '
                 </p>
             </div>
         </div>';
@@ -749,20 +768,40 @@ class PdfExportController extends Controller
         }
     }
 
+    protected function getBaseStyles()
+    {
+        return '
+        <style>
+            body { font-family: dejavusans, sans-serif; direction: rtl; color: #1e293b; }
+            table { width: 100%; border-collapse: collapse; font-size: 9px; }
+            th, td { border: 1px solid #cbd5e1; padding: 5px 6px; text-align: center; }
+            th { color: #ffffff; font-weight: bold; background: #1e3a5f; font-size: 9px; }
+            .title-box { background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border: 2px solid #1e3a5f; padding: 14px 12px; margin: 15px 0; text-align: center; border-radius: 10px; box-shadow: 0 2px 8px rgba(30,58,95,0.1); }
+            .title-box h2 { font-size: 16px; margin: 0; color: #1e3a5f; }
+            .title-box p { font-size: 11px; margin: 5px 0 0 0; color: #475569; }
+            .summary-box { background: #f8fafc; border: 1.5px solid #cbd5e1; padding: 10px; margin: 10px 0; border-radius: 8px; }
+            .section-header { background: #1e3a5f; color: #ffffff; padding: 8px 12px; font-weight: bold; font-size: 11px; text-align: center; margin: 15px 0 8px 0; border-radius: 6px 6px 0 0; }
+            .subsection-header { background: #3b82f6; color: #ffffff; padding: 5px 10px; font-weight: bold; font-size: 10px; text-align: center; border-radius: 4px; }
+            .row-even { background: #ffffff; }
+            .row-odd { background: #f8fafc; }
+            .total-row { background: #1e3a5f; color: #ffffff; font-weight: bold; }
+            .total-row td { border-color: #334155; }
+            .success-bg { background: #dcfce7; color: #16a34a; }
+            .warning-bg { background: #fef3c7; color: #d97706; }
+            .danger-bg { background: #fee2e2; color: #dc2626; }
+            .info-table td { border: none; padding: 3px 5px; font-size: 9px; }
+            .text-start { text-align: right; }
+            .text-end { text-align: left; }
+            .font-bold { font-weight: bold; }
+        </style>';
+    }
+
     private function generateSalaryIncreaseReportHtml($org, $data, $year)
     {
         $headerHtml = $this->getOfficialHeaderHtml($org);
+        $styles = $this->getBaseStyles();
         
-        $html = '
-        <style>
-            body { font-family: aealarabiya, sans-serif; direction: rtl; }
-            table { width: 100%; border-collapse: collapse; font-size: 9px; }
-            th, td { border: 1px solid #334155; padding: 5px; text-align: center; }
-            th { color: white; font-weight: bold; background: #1e40af; }
-            .title-box { background: #eff6ff; border: 2px solid #1e40af; padding: 12px; margin: 15px 0; text-align: center; border-radius: 8px; }
-            .title-box h2 { font-size: 16px; margin: 0; color: #1e40af; }
-            .title-box p { font-size: 12px; margin: 5px 0 0 0; color: #3b82f6; }
-        </style>
+        $html = $styles . '
         
         ' . $headerHtml . '
         
@@ -840,20 +879,7 @@ class PdfExportController extends Controller
             return ($a->paid_installments ?? 0) * ($a->monthly_installment ?? 0);
         });
         
-        $html = '
-        <style>
-            body { font-family: aealarabiya, sans-serif; direction: rtl; }
-            table { width: 100%; border-collapse: collapse; font-size: 9px; }
-            th, td { border: 1px solid #334155; padding: 4px; }
-            th { color: white; font-weight: bold; text-align: center; background: #1e40af; }
-            .section-header { background: #1e40af; color: white; padding: 8px; font-weight: bold; font-size: 11px; text-align: center; margin-top: 10px; }
-            .subsection-header { background: #3b82f6; color: white; padding: 5px; font-weight: bold; font-size: 10px; text-align: center; }
-            .info-table td { border: none; padding: 3px; font-size: 9px; }
-            .summary-box { background: #f0f9ff; padding: 10px; border-radius: 8px; margin: 10px 0; border: 1px solid #bae6fd; }
-            .success { background: #dcfce7; }
-            .warning { background: #fef3c7; }
-            .danger { background: #fee2e2; }
-        </style>';
+        $html = $this->getBaseStyles();
         
         // Header
         $html .= $this->getOfficialHeaderHtml($org);
@@ -1074,22 +1100,9 @@ class PdfExportController extends Controller
     private function generateDetailedSalaryReportHtml($org, $salaryData, $monthName, $year, $currencySymbol)
     {
         $headerHtml = $this->getOfficialHeaderHtml($org);
+        $styles = $this->getBaseStyles();
         
-        $html = '
-        <style>
-            body { font-family: aealarabiya, sans-serif; direction: rtl; }
-            table { width: 100%; border-collapse: collapse; font-size: 8px; }
-            th, td { border: 1px solid #334155; padding: 4px; }
-            th { color: white; font-weight: bold; text-align: center; }
-            .header-table th { background: #1e40af; }
-            .deductions-table th { background: #dc2626; }
-            .title-box { background: #eff6ff; border: 2px solid #1e40af; padding: 12px; margin: 15px 0; text-align: center; border-radius: 8px; }
-            .title-box h2 { font-size: 14px; margin: 0; color: #1e40af; }
-            .title-box p { font-size: 11px; margin: 5px 0 0 0; color: #3b82f6; }
-            .summary-box { background: #f0fdf4; border: 2px solid #16a34a; padding: 10px; margin: 10px 0; border-radius: 8px; }
-        </style>
-        
-        ' . $headerHtml . '
+        $html = $styles . $headerHtml . '
         
         <div class="title-box">
             <h2>كشف رواتب الموظفين</h2>
@@ -1098,10 +1111,10 @@ class PdfExportController extends Controller
         
         // Earnings table
         $html .= '
-        <p style="font-weight:bold;color:#1e40af;font-size:12px;margin:15px 0 5px 0;">جدول الاستحقاقات</p>
+        <p style="font-weight:bold;color:#1e3a5f;font-size:12px;margin:15px 0 5px 0;padding:8px 12px;background:#eef2ff;border-radius:6px;border-right:3px solid #1e3a5f;">جدول الاستحقاقات</p>
         <table>
             <thead>
-                <tr class="header-table">
+                <tr>
                     <th style="width:4%">#</th>
                     <th style="width:20%">الاسم</th>
                     <th style="width:14%">القسم</th>
@@ -1126,35 +1139,35 @@ class PdfExportController extends Controller
             $totals['incentives'] += $totalIncentives;
             $totals['gross'] += $emp['gross_salary'];
             
-            $bg = $i % 2 === 0 ? '#ffffff' : '#f8fafc';
-            $html .= '<tr style="background:' . $bg . '">
-                <td class="text-center">' . ($i + 1) . '</td>
+            $rowClass = $i % 2 === 0 ? 'row-even' : 'row-odd';
+            $html .= '<tr class="' . $rowClass . '">
+                <td>' . ($i + 1) . '</td>
                 <td style="font-weight:bold;text-align:right;">' . htmlspecialchars($emp['employee']->name) . '</td>
                 <td>' . htmlspecialchars($emp['employee']->department?->name ?? '-') . '</td>
-                <td class="text-center">' . number_format($emp['base_salary'], 2) . '</td>
-                <td class="text-center">' . number_format($emp['position_allowance'], 2) . '</td>
-                <td class="text-center">' . number_format($totalAllowances, 2) . '</td>
-                <td class="text-center">' . number_format($totalIncentives, 2) . '</td>
-                <td class="text-center font-bold" style="background:#dcfce7;">' . number_format($emp['gross_salary'], 2) . '</td>
+                <td>' . number_format($emp['base_salary'], 2) . '</td>
+                <td>' . number_format($emp['position_allowance'], 2) . '</td>
+                <td>' . number_format($totalAllowances, 2) . '</td>
+                <td>' . number_format($totalIncentives, 2) . '</td>
+                <td class="font-bold success-bg">' . number_format($emp['gross_salary'], 2) . '</td>
             </tr>';
         }
         
-        $html .= '<tr style="background:#1e40af;color:white;font-weight:bold;">
-            <td colspan="3" class="text-center">المجموع</td>
-            <td class="text-center">' . number_format($totals['base'], 2) . '</td>
-            <td class="text-center">' . number_format($totals['position'], 2) . '</td>
-            <td class="text-center">' . number_format($totals['allowances'], 2) . '</td>
-            <td class="text-center">' . number_format($totals['incentives'], 2) . '</td>
-            <td class="text-center">' . number_format($totals['gross'], 2) . '</td>
+        $html .= '<tr class="total-row">
+            <td colspan="3">المجموع</td>
+            <td>' . number_format($totals['base'], 2) . '</td>
+            <td>' . number_format($totals['position'], 2) . '</td>
+            <td>' . number_format($totals['allowances'], 2) . '</td>
+            <td>' . number_format($totals['incentives'], 2) . '</td>
+            <td>' . number_format($totals['gross'], 2) . '</td>
         </tr></tbody></table>';
         
         // Deductions table
         $html .= '
-        <p style="font-weight:bold;color:#dc2626;font-size:12px;margin:15px 0 5px 0;">جدول الخصومات</p>
+        <p style="font-weight:bold;color:#dc2626;font-size:12px;margin:15px 0 5px 0;padding:8px 12px;background:#fef2f2;border-radius:6px;border-right:3px solid #dc2626;">جدول الخصومات</p>
         
         <table>
             <thead>
-                <tr class="deductions-table">
+                <tr style="background:#dc2626;">
                     <th style="width:4%">#</th>
                     <th style="width:18%">الاسم</th>
                     <th style="width:8%">التأمين</th>
@@ -1181,32 +1194,32 @@ class PdfExportController extends Controller
             $totals2['total_ded'] += $totalDed;
             $totals2['net'] += $emp['net_salary'];
             
-            $bg = $i % 2 === 0 ? '#ffffff' : '#fef2f2';
-            $html .= '<tr style="background:' . $bg . '">
-                <td class="text-center">' . ($i + 1) . '</td>
+            $rowClass = $i % 2 === 0 ? 'row-even' : 'row-odd';
+            $html .= '<tr class="' . $rowClass . '">
+                <td>' . ($i + 1) . '</td>
                 <td style="font-weight:bold;text-align:right;">' . htmlspecialchars($emp['employee']->name) . '</td>
-                <td class="text-center">' . number_format($emp['insurance_amount'], 2) . '</td>
-                <td class="text-center">' . number_format($emp['deductions'], 2) . '</td>
-                <td class="text-center">' . number_format($attendanceDeduction, 2) . '</td>
-                <td class="text-center">' . number_format($advanceDeduction, 2) . '</td>
-                <td class="text-center font-bold" style="background:#fee2e2;">' . number_format($totalDed, 2) . '</td>
-                <td class="text-center font-bold" style="background:#dcfce7;">' . number_format($emp['net_salary'], 2) . '</td>
+                <td>' . number_format($emp['insurance_amount'], 2) . '</td>
+                <td>' . number_format($emp['deductions'], 2) . '</td>
+                <td>' . number_format($attendanceDeduction, 2) . '</td>
+                <td>' . number_format($advanceDeduction, 2) . '</td>
+                <td class="font-bold danger-bg">' . number_format($totalDed, 2) . '</td>
+                <td class="font-bold success-bg">' . number_format($emp['net_salary'], 2) . '</td>
             </tr>';
         }
         
         $html .= '<tr style="background:#dc2626;color:white;font-weight:bold;">
-            <td colspan="2" class="text-center">المجموع</td>
-            <td class="text-center">' . number_format($totals2['insurance'], 2) . '</td>
-            <td class="text-center">' . number_format($totals2['deductions'], 2) . '</td>
-            <td class="text-center">' . number_format($totals2['attendance'], 2) . '</td>
-            <td class="text-center">' . number_format($totals2['advances'], 2) . '</td>
-            <td class="text-center">' . number_format($totals2['total_ded'], 2) . '</td>
-            <td class="text-center">' . number_format($totals2['net'], 2) . '</td>
+            <td colspan="2">المجموع</td>
+            <td>' . number_format($totals2['insurance'], 2) . '</td>
+            <td>' . number_format($totals2['deductions'], 2) . '</td>
+            <td>' . number_format($totals2['attendance'], 2) . '</td>
+            <td>' . number_format($totals2['advances'], 2) . '</td>
+            <td>' . number_format($totals2['total_ded'], 2) . '</td>
+            <td>' . number_format($totals2['net'], 2) . '</td>
         </tr></tbody></table>';
         
         // Summary
         $html .= '
-        <div class="summary-box" style="margin-top:15px;">
+        <div class="summary-box" style="margin-top:15px;background:#f0fdf4;border-color:#16a34a;">
             <table style="border:none;width:100%;">
                 <tr style="border:none;">
                     <td style="border:none;width:25%;font-weight:bold;">عدد الموظفين:</td>
@@ -1231,20 +1244,13 @@ class PdfExportController extends Controller
     private function generateIncomeTaxReportHtml($org, $taxData, $year)
     {
         $headerHtml = $this->getOfficialHeaderHtml($org);
+        $styles = $this->getBaseStyles();
         
-        $html = '
-        <style>
-            body { font-family: aealarabiya, sans-serif; direction: rtl; }
-            table { width: 100%; border-collapse: collapse; font-size: 9px; }
-            th, td { border: 1px solid #334155; padding: 5px; text-align: center; }
-            th { color: white; font-weight: bold; background: #ea580c; }
-        </style>
+        $html = $styles . $headerHtml . '
         
-        ' . $headerHtml . '
-        
-        <div style="text-align:center;margin:15px 0;border:2px solid #ea580c;padding:12px;border-radius:8px;background:#fff7ed;">
-            <h2 style="font-size:16px;margin:0;color:#ea580c;">تقرير ضريبة الدخل</h2>
-            <p style="font-size:12px;margin:5px 0 0 0;color:#c2410c;">السنة: ' . $year . ' | تاريخ الطباعة: ' . now()->format('Y-m-d') . '</p>
+        <div class="title-box" style="border-color:#ea580c;background:linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%);">
+            <h2 style="color:#ea580c;">تقرير ضريبة الدخل</h2>
+            <p style="color:#c2410c;">السنة: ' . $year . ' | تاريخ الطباعة: ' . now()->format('Y-m-d') . '</p>
         </div>
         
         <table>
@@ -1265,8 +1271,8 @@ class PdfExportController extends Controller
         
         foreach ($taxData as $i => $row) {
             $emp = $row['employee'];
-            $bg = $i % 2 === 0 ? '#ffffff' : '#fff7ed';
-            $html .= '<tr style="background:' . $bg . '">
+            $rowClass = $i % 2 === 0 ? 'row-even' : 'row-odd';
+            $html .= '<tr class="' . $rowClass . '">
                 <td>' . ($i + 1) . '</td>
                 <td style="text-align:right;font-weight:bold;">' . htmlspecialchars($emp->name ?? '-') . '</td>
                 <td>' . htmlspecialchars($emp->department?->name ?? '-') . '</td>
@@ -1298,20 +1304,13 @@ class PdfExportController extends Controller
     private function generateLeaveWarningReportHtml($org, $data, $year)
     {
         $headerHtml = $this->getOfficialHeaderHtml($org);
+        $styles = $this->getBaseStyles();
         
-        $html = '
-        <style>
-            body { font-family: aealarabiya, sans-serif; direction: rtl; }
-            table { width: 100%; border-collapse: collapse; font-size: 9px; }
-            th, td { border: 1px solid #334155; padding: 5px; }
-            th { color: white; font-weight: bold; background: #7c3aed; }
-        </style>
+        $html = $styles . $headerHtml . '
         
-        ' . $headerHtml . '
-        
-        <div style="text-align:center;margin:15px 0;border:2px solid #7c3aed;padding:12px;border-radius:8px;background:#f5f3ff;">
-            <h2 style="font-size:16px;margin:0;color:#7c3aed;">تقرير الإجازات والإنذارات</h2>
-            <p style="font-size:12px;margin:5px 0 0 0;color:#6d28d9;">السنة: ' . $year . ' | تاريخ الطباعة: ' . now()->format('Y-m-d') . '</p>
+        <div class="title-box" style="border-color:#7c3aed;background:linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%);">
+            <h2 style="color:#7c3aed;">تقرير الإجازات والإنذارات</h2>
+            <p style="color:#6d28d9;">السنة: ' . $year . ' | تاريخ الطباعة: ' . now()->format('Y-m-d') . '</p>
         </div>
         
         <table>
@@ -1334,8 +1333,8 @@ class PdfExportController extends Controller
             elseif ($warningsCount > 0) $summary = 'إنذارات فقط';
             else $summary = 'لا توجد سجلات';
             
-            $bg = $i % 2 === 0 ? '#ffffff' : '#f5f3ff';
-            $html .= '<tr style="background:' . $bg . '">
+            $rowClass = $i % 2 === 0 ? 'row-even' : 'row-odd';
+            $html .= '<tr class="' . $rowClass . '">
                 <td>' . ($i + 1) . '</td>
                 <td style="text-align:right;font-weight:bold;">' . htmlspecialchars($emp->name ?? '-') . '</td>
                 <td>' . htmlspecialchars($emp->department?->name ?? '-') . '</td>
@@ -1355,20 +1354,13 @@ class PdfExportController extends Controller
     private function generateDepartmentReportHtml($org, $data, $year)
     {
         $headerHtml = $this->getOfficialHeaderHtml($org);
+        $styles = $this->getBaseStyles();
         
-        $html = '
-        <style>
-            body { font-family: aealarabiya, sans-serif; direction: rtl; }
-            table { width: 100%; border-collapse: collapse; font-size: 9px; }
-            th, td { border: 1px solid #334155; padding: 5px; }
-            th { color: white; font-weight: bold; background: #0891b2; }
-        </style>
+        $html = $styles . $headerHtml . '
         
-        ' . $headerHtml . '
-        
-        <div style="text-align:center;margin:15px 0;border:2px solid #0891b2;padding:12px;border-radius:8px;background:#ecfeff;">
-            <h2 style="font-size:16px;margin:0;color:#0891b2;">تقرير الأقسام</h2>
-            <p style="font-size:12px;margin:5px 0 0 0;color:#0e7490;">السنة: ' . $year . ' | تاريخ الطباعة: ' . now()->format('Y-m-d') . '</p>
+        <div class="title-box" style="border-color:#0891b2;background:linear-gradient(135deg, #ecfeff 0%, #cffafe 100%);">
+            <h2 style="color:#0891b2;">تقرير الأقسام</h2>
+            <p style="color:#0e7490;">السنة: ' . $year . ' | تاريخ الطباعة: ' . now()->format('Y-m-d') . '</p>
         </div>
         
         <table>
@@ -1383,8 +1375,8 @@ class PdfExportController extends Controller
         $totalSal = 0;
         
         foreach ($data as $i => $row) {
-            $bg = $i % 2 === 0 ? '#ffffff' : '#ecfeff';
-            $html .= '<tr style="background:' . $bg . '">
+            $rowClass = $i % 2 === 0 ? 'row-even' : 'row-odd';
+            $html .= '<tr class="' . $rowClass . '">
                 <td>' . ($i + 1) . '</td>
                 <td style="text-align:right;font-weight:bold;">' . htmlspecialchars($row['name'] ?? '-') . '</td>
                 <td style="text-align:center;">' . ($row['employee_count'] ?? 0) . '</td>
@@ -1470,35 +1462,41 @@ class PdfExportController extends Controller
     private function generateLetterHtml($org, $employee, $content)
     {
         $headerHtml = $this->getOfficialHeaderHtml($org);
+        $styles = $this->getBaseStyles();
         
-        $html = '
+        $html = $styles . '
         <style>
-            body { font-family: aealarabiya, sans-serif; line-height: 1.8; }
+            body { font-family: dejavusans, sans-serif; line-height: 2; }
             .letter-box { background: #fff; padding: 20px 30px; margin: 15px 0; }
-            .title { font-size: 20px; font-weight: bold; margin: 30px 0; text-align: center; color: #1e40af; }
-            .content { text-align: justify; margin: 30px 0; font-size: 13px; }
-            .ref-box { background: #eff6ff; border: 1px solid #3b82f6; padding: 10px; border-radius: 8px; margin: 15px 0; text-align: center; }
+            .letter-title { font-size: 20px; font-weight: bold; margin: 25px 0; text-align: center; color: #1e3a5f; }
+            .content-body { text-align: justify; margin: 30px 0; font-size: 12px; line-height: 2; }
+            .ref-box { background: #eef2ff; border: 1px solid #c7d2fe; padding: 8px 15px; border-radius: 6px; margin: 15px 0; text-align: center; }
+            .employee-info { background: #f8fafc; border: 1px solid #e2e8f0; padding: 10px; margin: 15px 0; }
         </style>
         
         ' . $headerHtml . '
         
         <div class="ref-box">
-            <p style="margin:0;font-size:11px;color:#1e40af;">
+            <p style="margin:0;font-size:10px;color:#1e3a5f;">
                 <strong>المرجع:</strong> ' . $org['name'] . '-DOC-' . str_pad($employee->id, 4, '0', STR_PAD_LEFT) . '-' . date('Y') . '
             </p>
         </div>
         
         <div class="letter-box">
-            <div class="title">' . $content['title'] . '</div>
+            <div class="letter-title">' . $content['title'] . '</div>
             
-            <div style="margin-bottom:20px;">
-                <p style="font-size:11px;color:#64748b;margin:0;">التاريخ: ' . now()->format('Y-m-d') . '</p>
-                <p style="font-size:11px;color:#64748b;margin:5px 0 0 0;">الاسم: ' . htmlspecialchars($employee->name) . '</p>
-                <p style="font-size:11px;color:#64748b;margin:2px 0;">القسم: ' . htmlspecialchars($employee->department?->name ?? '-') . '</p>
-                <p style="font-size:11px;color:#64748b;margin:2px 0;">المهنة: ' . htmlspecialchars($employee->position ?? '-') . '</p>
+            <div class="employee-info">
+                <table style="width:100%;border:none;font-size:11px;">
+                    <tr>
+                        <td style="border:none;padding:3px;width:25%;"><strong>التاريخ:</strong> ' . now()->format('Y-m-d') . '</td>
+                        <td style="border:none;padding:3px;width:25%;"><strong>الاسم:</strong> ' . htmlspecialchars($employee->name) . '</td>
+                        <td style="border:none;padding:3px;width:25%;"><strong>القسم:</strong> ' . htmlspecialchars($employee->department?->name ?? '-') . '</td>
+                        <td style="border:none;padding:3px;width:25%;"><strong>المهنة:</strong> ' . htmlspecialchars($employee->position ?? '-') . '</td>
+                    </tr>
+                </table>
             </div>
             
-            <div class="content">' . $content['body'] . '</div>
+            <div class="content-body">' . $content['body'] . '</div>
         </div>';
         
         $html .= $this->getOfficialFooterHtml($org);
