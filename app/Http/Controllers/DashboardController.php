@@ -209,7 +209,21 @@ class DashboardController extends Controller
             $deptSalaryPie[] = ['label' => $d->name, 'value' => (float) $totalSal, 'color' => $color];
         }
 
-        // Job positions distribution
+        // Job positions per department
+        $deptPositions = DB::table('employees')
+            ->join('departments', 'employees.department_id', '=', 'departments.id')
+            ->where('employees.status', 'active')
+            ->whereNotNull('employees.position')
+            ->select('departments.id', 'departments.name', DB::raw('COUNT(DISTINCT employees.position) as position_count'))
+            ->groupBy('departments.id', 'departments.name')
+            ->get();
+        $deptPositionsPie = [];
+        foreach ($deptPositions as $i => $d) {
+            $color = $deptColors[$i % count($deptColors)];
+            $deptPositionsPie[] = ['label' => $d->name, 'value' => (int) $d->position_count, 'color' => $color];
+        }
+
+        // Job positions distribution (employee count per title)
         $positions = Employee::where('status', 'active')
             ->whereNotNull('position')
             ->selectRaw('position, COUNT(*) as count')
@@ -271,6 +285,7 @@ class DashboardController extends Controller
                 'departments_employees' => $deptEmployeesPie,
                 'departments_salary' => $deptSalaryPie,
                 'positions' => $positionsPie,
+                'dept_positions' => $deptPositionsPie,
                 'leaves_rejected' => $rejectedLeavesPie,
                 'leaves_pending' => $pendingLeavesPie,
                 'leaves_status' => $leaveStatusPie,
