@@ -154,6 +154,38 @@ class DashboardController extends Controller
             ['label' => 'في إجازة', 'value' => $onLeaveCount, 'color' => '#8B5CF6'],
         ];
 
+        // Departments by employee count
+        $depts = DB::table('departments')
+            ->leftJoin('employees', 'departments.id', '=', 'employees.department_id')
+            ->where('employees.status', 'active')
+            ->select('departments.id', 'departments.name', DB::raw('COUNT(employees.id) as emp_count'))
+            ->groupBy('departments.id', 'departments.name')
+            ->get();
+        $deptColors = ['#3B82F6','#10B981','#F59E0B','#EF4444','#8B5CF6','#EC4899','#06B6D4','#F97316','#6366F1','#14B8A6'];
+        $deptEmployeesPie = [];
+        $deptSalaryPie = [];
+        foreach ($depts as $i => $d) {
+            $color = $deptColors[$i % count($deptColors)];
+            $deptEmployeesPie[] = ['label' => $d->name, 'value' => (int) $d->emp_count, 'color' => $color];
+            $totalSal = DB::table('employees')->where('department_id', $d->id)
+                ->where('status', 'active')->sum('base_salary');
+            $deptSalaryPie[] = ['label' => $d->name, 'value' => (float) $totalSal, 'color' => $color];
+        }
+
+        // Job positions distribution
+        $positions = Employee::where('status', 'active')
+            ->whereNotNull('position')
+            ->selectRaw('position, COUNT(*) as count')
+            ->groupBy('position')
+            ->orderByDesc('count')
+            ->get();
+        $posColors = ['#6366F1','#EC4899','#10B981','#F59E0B','#3B82F6','#EF4444','#8B5CF6','#06B6D4','#F97316','#14B8A6'];
+        $positionsPie = [];
+        foreach ($positions as $i => $p) {
+            $color = $posColors[$i % count($posColors)];
+            $positionsPie[] = ['label' => $p->position, 'value' => (int) $p->count, 'color' => $color];
+        }
+
         // ==================== IDEAL EMPLOYEE ====================
         $idealEmployee = $this->getIdealEmployee($currentMonth, $currentYear);
 
@@ -199,6 +231,9 @@ class DashboardController extends Controller
                 'leaves' => $leavesPie,
                 'advances' => $advancesPie,
                 'attendance' => $attendancePie,
+                'departments_employees' => $deptEmployeesPie,
+                'departments_salary' => $deptSalaryPie,
+                'positions' => $positionsPie,
             ],
             'pending' => [
                 'leaves' => $pendingLeaves,
