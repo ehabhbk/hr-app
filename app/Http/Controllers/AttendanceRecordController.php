@@ -374,10 +374,15 @@ class AttendanceRecordController extends Controller
     // Calculate absences for employees with shifts
     public function calculateAbsencesForPeriod($fromDate, $toDate)
     {
-        $tz = 'Africa/Khartoum';
-        $employees = Employee::whereNotNull('work_shift_id')->with('workShift', 'leaves')->get();
         $settings = Setting::where('key', 'attendance')->first();
         $attendanceSettings = $settings ? $settings->value : [];
+
+        // Check if absence rules are enabled
+        $rulesEnabled = $attendanceSettings['absence_rules_enabled'] ?? false;
+        if (!$rulesEnabled) return 0;
+
+        $tz = 'Africa/Khartoum';
+        $employees = Employee::whereNotNull('work_shift_id')->with('workShift', 'leaves')->get();
 
         $processed = 0;
 
@@ -450,8 +455,11 @@ class AttendanceRecordController extends Controller
         $fromDate = $request->from_date ?? now()->startOfMonth()->format('Y-m-d');
         $toDate = $request->to_date ?? now()->format('Y-m-d');
         $count = $this->calculateAbsencesForPeriod($fromDate, $toDate);
+        $message = $count > 0
+            ? "تم احتساب $count يوم غياب"
+            : "لم يتم احتساب أي غياب (تأكد من تفعيل قواعد الغياب في الإعدادات)";
         return response()->json([
-            'message' => "تم احتساب $count يوم غياب",
+            'message' => $message,
             'absences_count' => $count,
         ]);
     }
