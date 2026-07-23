@@ -233,7 +233,32 @@ class AttendanceRecordController extends Controller
             $shift = WorkShift::find($employee->work_shift_id);
         }
         
-        // If no shift assigned, use default times
+        // If no shift assigned, find the nearest shift based on check-in time
+        if (!$shift && $record->check_in_time) {
+            $allShifts = WorkShift::where('active', true)->get();
+            if ($allShifts->isNotEmpty()) {
+                $recordDate = $record->date instanceof Carbon ? $record->date->format('Y-m-d') : $record->date;
+                $actualCheckIn = $record->check_in_time instanceof Carbon
+                    ? $record->check_in_time->setTimezone($tz)
+                    : Carbon::parse($record->check_in_time)->setTimezone($tz);
+                
+                $nearestShift = null;
+                $minDiff = PHP_INT_MAX;
+                
+                foreach ($allShifts as $s) {
+                    $shiftStartDT = Carbon::parse($recordDate . ' ' . $s->start_time, $tz);
+                    $diff = abs($actualCheckIn->diffInMinutes($shiftStartDT));
+                    if ($diff < $minDiff) {
+                        $minDiff = $diff;
+                        $nearestShift = $s;
+                    }
+                }
+                
+                $shift = $nearestShift;
+            }
+        }
+        
+        // If still no shift found, use default times
         $shiftStart = $shift ? $shift->start_time : '08:00';
         $shiftEnd = $shift ? $shift->end_time : '17:00';
         $expectedHours = ($shift && $shift->daily_hours) ? $shift->daily_hours : 8;
@@ -320,10 +345,29 @@ class AttendanceRecordController extends Controller
             }
         }
 
+        // Send WhatsApp notifications after deduction is calculated
+        if ($record->has_delay) {
+            $recordDateStr = $record->date instanceof Carbon ? $record->date->format('Y-m-d') : $record->date;
+            try {
+                $whatsapp = new \App\Services\WhatsAppService();
+                // Employee notification with deduction amount
+                $whatsapp->sendLateArrivalNotification($employee, $recordDateStr, $record->check_in_delay_minutes, $record->delay_deduction ?? 0);
+                // Admin notification
+                $whatsapp->notifyAdminLate($employee, $recordDateStr, $record->check_in_delay_minutes);
+            } catch (\Exception $e) {
+                \Illuminate\Support\Facades\Log::error('WhatsApp notification error: ' . $e->getMessage());
+            }
+        }
+
         // Calculate check-out type (always runs, not a deduction)
         if ($record->check_out_time) {
             $recordDate = $record->date instanceof Carbon ? $record->date->format('Y-m-d') : $record->date;
             $shiftEndTime = Carbon::parse($recordDate . ' ' . $shiftEnd, $tz);
+            
+            // For overnight shifts: if end_time < start_time, the shift ends the next day
+            if ($shift && ($shift->is_overnight || $shiftEnd < $shiftStart)) {
+                $shiftEndTime->addDay();
+            }
             
             $actualCheckOut = $record->check_out_time instanceof Carbon 
                 ? $record->check_out_time->setTimezone($tz) 
@@ -440,6 +484,14 @@ class AttendanceRecordController extends Controller
                 );
 
                 $processed++;
+
+                // Admin notification for absence
+                try {
+                    $whatsapp = new \App\Services\WhatsAppService();
+                    $whatsapp->notifyAdminAbsence($employee, $dateStr);
+                } catch (\Exception $e) {
+                    \Illuminate\Support\Facades\Log::error('WhatsApp admin notification error: ' . $e->getMessage());
+                }
             }
         }
 
@@ -532,6 +584,42 @@ class AttendanceRecordController extends Controller
             $results[] = $record;
         }
         
+        // Post-process: if employee has check-in on Day N without check-out
+        // and has a check-in on Day N+1, move Day N+1's first punch to Day N as check-out
+        $employeeIds = array_unique(array_map(fn($r) => $r->employee_id, $results));
+        foreach ($employeeIds as $empId) {
+            $empRecords = collect($results)->where('employee_id', $empId)->sortBy('date')->values();
+            
+            for ($i = 0; $i < $empRecords->count() - 1; $i++) {
+                $current = $empRecords[$i];
+                $next = $empRecords[$i + 1];
+                
+                // Current day has check-in but no check-out, and next day has a check-in
+                if ($current->check_in_time && !$current->check_out_time && $next->check_in_time) {
+                    $nextDate = $next->date instanceof Carbon ? $next->date->format('Y-m-d') : $next->date;
+                    $currentDate = $current->date instanceof Carbon ? $current->date->format('Y-m-d') : $current->date;
+                    
+                    // Only if next day is the immediate next day
+                    $currentDateObj = Carbon::parse($currentDate);
+                    $nextDateObj = Carbon::parse($nextDate);
+                    
+                    if ($nextDateObj->diffInDays($currentDateObj) === 1) {
+                        // Move next day's check-in to current day as check-out
+                        $nextCheckIn = $next->check_in_time;
+                        
+                        $current->check_out_time = $nextCheckIn;
+                        $current->save();
+                        
+                        $next->check_in_time = null;
+                        $next->check_out_time = null;
+                        $next->save();
+                        
+                        $this->calculateDeductions($current);
+                    }
+                }
+            }
+        }
+
         // Auto-calculate absences for the same period
         $absencesCount = $this->calculateAbsencesForPeriod($fromDate, $toDate);
 

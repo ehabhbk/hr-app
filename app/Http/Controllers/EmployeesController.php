@@ -363,6 +363,14 @@ class EmployeesController extends Controller
             \Illuminate\Support\Facades\Log::error('WhatsApp notification error for new employee: ' . $e->getMessage());
         }
 
+        // Admin notification
+        try {
+            $whatsapp = new \App\Services\WhatsAppService();
+            $whatsapp->notifyAdminAppointment($employee, $employee->position ?? 'غير محدد', $employee->hire_date ?? now()->toDateString());
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('WhatsApp admin notification error: ' . $e->getMessage());
+        }
+
         return response()->json([
             'data' => $employee,
             'message' => 'تم إضافة الموظف بنجاح',
@@ -793,6 +801,14 @@ class EmployeesController extends Controller
         $employee->termination_reason = $data['termination_reason'];
         $employee->termination_date = now()->toDateString();
         $employee->save();
+
+        // Admin notification
+        try {
+            $whatsapp = new \App\Services\WhatsAppService();
+            $whatsapp->notifyAdminTermination($employee, $data['termination_reason'], now()->toDateString());
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('WhatsApp admin notification error: ' . $e->getMessage());
+        }
 
         return response()->json([
             'data' => $employee,

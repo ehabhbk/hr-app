@@ -296,6 +296,13 @@ class AdvancesController extends Controller
 
             $whatsapp->sendAdvanceNotification($employee, $a, 'approved');
 
+            // Admin notification
+            try {
+                $whatsapp->notifyAdminAdvance($employee, $a, 'approved');
+            } catch (\Exception $e) {
+                \Illuminate\Support\Facades\Log::error('WhatsApp admin notification error: ' . $e->getMessage());
+            }
+
             Notification::send(
                 auth()->id(),
                 'salary',
@@ -319,6 +326,13 @@ class AdvancesController extends Controller
 
         if ($employee) {
             $whatsapp->sendAdvanceNotification($employee, $a, 'rejected');
+
+            // Admin notification
+            try {
+                $whatsapp->notifyAdminAdvance($employee, $a, 'rejected');
+            } catch (\Exception $e) {
+                \Illuminate\Support\Facades\Log::error('WhatsApp admin notification error: ' . $e->getMessage());
+            }
 
             Notification::send(
                 auth()->id(),

@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\Incentive;
+use App\Models\Employee;
+use App\Services\WhatsAppService;
 use Illuminate\Http\Request;
 
 class IncentivesController extends Controller
@@ -27,6 +29,17 @@ class IncentivesController extends Controller
         // Button incentives from Employee.tsx are always one-time (not recurring)
         $data['is_recurring'] = false;
         $i = Incentive::create($data);
+
+        // Admin notification
+        try {
+            $employee = Employee::find($data['employee_id']);
+            if ($employee) {
+                $whatsapp = new WhatsAppService();
+                $whatsapp->notifyAdminIncentive($employee, $data['value'], $data['note'] ?? $data['type']);
+            }
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('WhatsApp admin notification error: ' . $e->getMessage());
+        }
 
         return response()->json(['data' => $i], 201);
     }

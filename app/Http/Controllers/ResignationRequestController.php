@@ -66,6 +66,14 @@ class ResignationRequestController extends Controller
             $employee->status = 'inactive';
             $employee->save();
 
+            // Admin notification
+            try {
+                $whatsapp = new \App\Services\WhatsAppService();
+                $whatsapp->notifyAdminResignation($employee, 'approved');
+            } catch (\Exception $e) {
+                \Illuminate\Support\Facades\Log::error('WhatsApp admin notification error: ' . $e->getMessage());
+            }
+
             Notification::send(
                 auth()->id(),
                 'resignation',
@@ -74,6 +82,14 @@ class ResignationRequestController extends Controller
                 ['resignation_id' => $request->id, 'employee_id' => $employee->id]
             );
         } elseif ($r->status === 'rejected' && $employee) {
+            // Admin notification
+            try {
+                $whatsapp = new \App\Services\WhatsAppService();
+                $whatsapp->notifyAdminResignation($employee, 'rejected');
+            } catch (\Exception $e) {
+                \Illuminate\Support\Facades\Log::error('WhatsApp admin notification error: ' . $e->getMessage());
+            }
+
             Notification::send(
                 auth()->id(),
                 'resignation',

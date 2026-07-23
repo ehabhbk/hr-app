@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\Deduction;
+use App\Models\Employee;
+use App\Services\WhatsAppService;
 use Illuminate\Http\Request;
 
 class DeductionsController extends Controller
@@ -25,6 +27,17 @@ class DeductionsController extends Controller
             $data['date'] = now()->toDateString();
         }
         $d = Deduction::create($data);
+
+        // Admin notification
+        try {
+            $employee = Employee::find($data['employee_id']);
+            if ($employee) {
+                $whatsapp = new WhatsAppService();
+                $whatsapp->notifyAdminDeduction($employee, $data['amount'], $data['reason'] ?? $data['type']);
+            }
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('WhatsApp admin notification error: ' . $e->getMessage());
+        }
 
         return response()->json(['data' => $d], 201);
     }

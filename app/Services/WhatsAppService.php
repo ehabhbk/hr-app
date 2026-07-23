@@ -17,6 +17,7 @@ class WhatsAppService
     private $notifyOnAdvance = true;
     private $notifyOnSalary = true;
     private $notifyOnLate = true;
+    private $notifyPhone = '';
 
     public function __construct()
     {
@@ -26,6 +27,7 @@ class WhatsAppService
         $this->apiUrl = $data['api_url'] ?? 'https://api.whatsapp.com/send';
         $this->apiKey = $data['api_key'] ?? '';
         $this->enabled = $data['enabled'] ?? false;
+        $this->notifyPhone = $data['notify_phone'] ?? '';
         $this->notifyOnWarning = $data['notify_on_warning'] ?? true;
         $this->notifyOnLeave = $data['notify_on_leave'] ?? true;
         $this->notifyOnAdvance = $data['notify_on_advance'] ?? true;
@@ -178,7 +180,7 @@ class WhatsAppService
         return $this->sendToEmployee($employee->id, $message);
     }
 
-    public function sendLateArrivalNotification($employee, $date, $lateMinutes)
+    public function sendLateArrivalNotification($employee, $date, $lateMinutes, $deductionAmount = 0)
     {
         if (!$this->notifyOnLate) {
             return false;
@@ -191,8 +193,11 @@ class WhatsAppService
         $message .= "عزيزي/ {$employee->name}\n\n";
         $message .= "تم تسجيل تأخير في الحضور:\n";
         $message .= "التاريخ: {$date}\n";
-        $message .= "مدة التأخير: {$lateMinutes} دقيقة\n\n";
-        $message .= "نأمل الالتزام بمواعيد العمل.\n";
+        $message .= "مدة التأخير: {$lateMinutes} دقيقة\n";
+        if ($deductionAmount > 0) {
+            $message .= "المبلغ المخصوم: " . number_format($deductionAmount, 2) . " جنيه سوداني\n";
+        }
+        $message .= "\nنأمل الالتزام بمواعيد العمل.\n";
         $message .= "قسم الموارد البشرية";
         
         return $this->sendToEmployee($employee->id, $message);
@@ -266,6 +271,221 @@ class WhatsAppService
         $message .= "قسم الموارد البشرية";
         
         return $this->sendToEmployee($employee->id, $message);
+    }
+
+    public function sendAdminNotification($message)
+    {
+        if (!$this->isEnabled() || empty($this->notifyPhone)) {
+            return false;
+        }
+        return $this->sendMessage($this->notifyPhone, $message);
+    }
+
+    public function notifyAdminAppointment($employee, $position, $startDate)
+    {
+        $org = Setting::where('key', 'organization')->first();
+        $orgName = $org ? ($org->value['name'] ?? 'المؤسسة') : 'المؤسسة';
+        
+        $msg = "🏢 *{$orgName}* - إشعار إداري\n\n";
+        $msg .= "✅ تم تعيين موظف جديد\n";
+        $msg .= "الاسم: {$employee->name}\n";
+        $msg .= "المسمى: {$position}\n";
+        $msg .= "تاريخ المباشرة: {$startDate}\n";
+        
+        if (!empty($employee->phone)) {
+            $msg .= "الهاتف: {$employee->phone}\n";
+        }
+        
+        return $this->sendAdminNotification($msg);
+    }
+
+    public function notifyAdminTermination($employee, $reason, $date)
+    {
+        $org = Setting::where('key', 'organization')->first();
+        $orgName = $org ? ($org->value['name'] ?? 'المؤسسة') : 'المؤسسة';
+        
+        $msg = "🏢 *{$orgName}* - إشعار إداري\n\n";
+        $msg .= "❌ تم فصل موظف\n";
+        $msg .= "الاسم: {$employee->name}\n";
+        $msg .= "السبب: {$reason}\n";
+        $msg .= "التاريخ: {$date}\n";
+        
+        return $this->sendAdminNotification($msg);
+    }
+
+    public function notifyAdminWarning($employee, $warning)
+    {
+        $org = Setting::where('key', 'organization')->first();
+        $orgName = $org ? ($org->value['name'] ?? 'المؤسسة') : 'المؤسسة';
+        
+        $msg = "🏢 *{$orgName}* - إشعار إداري\n\n";
+        $msg .= "⚠️ تم إصدار إنذار\n";
+        $msg .= "الموظف: {$employee->name}\n";
+        $msg .= "النوع: {$warning->type}\n";
+        $msg .= "السبب: {$warning->reason}\n";
+        $msg .= "التاريخ: {$warning->date}\n";
+        
+        return $this->sendAdminNotification($msg);
+    }
+
+    public function notifyAdminLeave($employee, $leave, $status)
+    {
+        $org = Setting::where('key', 'organization')->first();
+        $orgName = $org ? ($org->value['name'] ?? 'المؤسسة') : 'المؤسسة';
+        
+        $statusText = match($status) {
+            'approved' => 'تمت الموافقة ✅',
+            'rejected' => 'تم الرفض ❌',
+            'pending' => 'قيد المراجعة ⏳',
+            default => $status,
+        };
+        
+        $leaveType = match($leave->type) {
+            'official' => 'رسمية',
+            'sick' => 'مرضية',
+            'maternity' => 'أمومة',
+            'hajj' => 'حج',
+            'unpaid' => 'بدون مرتب',
+            default => $leave->type,
+        };
+        
+        $msg = "🏢 *{$orgName}* - إشعار إداري\n\n";
+        $msg .= "🏖️ طلب إجازة\n";
+        $msg .= "الموظف: {$employee->name}\n";
+        $msg .= "النوع: {$leaveType}\n";
+        $msg .= "من: {$leave->from_date}\n";
+        $msg .= "إلى: {$leave->to_date}\n";
+        $msg .= "الحالة: {$statusText}\n";
+        
+        return $this->sendAdminNotification($msg);
+    }
+
+    public function notifyAdminAdvance($employee, $advance, $status)
+    {
+        $org = Setting::where('key', 'organization')->first();
+        $orgName = $org ? ($org->value['name'] ?? 'المؤسسة') : 'المؤسسة';
+        
+        $statusText = match($status) {
+            'approved' => 'تمت الموافقة ✅',
+            'rejected' => 'تم الرفض ❌',
+            default => $status,
+        };
+        
+        $advanceType = $advance->type === 'short' ? 'قصيرة' : 'طويلة';
+        
+        $msg = "🏢 *{$orgName}* - إشعار إداري\n\n";
+        $msg .= "💰 طلب سلفة {$advanceType}\n";
+        $msg .= "الموظف: {$employee->name}\n";
+        $msg .= "المبلغ: " . number_format($advance->amount) . " جنيه\n";
+        $msg .= "الحالة: {$statusText}\n";
+        
+        return $this->sendAdminNotification($msg);
+    }
+
+    public function notifyAdminLate($employee, $date, $lateMinutes)
+    {
+        $org = Setting::where('key', 'organization')->first();
+        $orgName = $org ? ($org->value['name'] ?? 'المؤسسة') : 'المؤسسة';
+        
+        $msg = "🏢 *{$orgName}* - إشعار إداري\n\n";
+        $msg .= "⏰ تأخر في الحضور\n";
+        $msg .= "الموظف: {$employee->name}\n";
+        $msg .= "التاريخ: {$date}\n";
+        $msg .= "مدة التأخير: {$lateMinutes} دقيقة\n";
+        
+        return $this->sendAdminNotification($msg);
+    }
+
+    public function notifyAdminAbsence($employee, $date)
+    {
+        $org = Setting::where('key', 'organization')->first();
+        $orgName = $org ? ($org->value['name'] ?? 'المؤسسة') : 'المؤسسة';
+        
+        $msg = "🏢 *{$orgName}* - إشعار إداري\n\n";
+        $msg .= "🚫 غياب\n";
+        $msg .= "الموظف: {$employee->name}\n";
+        $msg .= "التاريخ: {$date}\n";
+        
+        return $this->sendAdminNotification($msg);
+    }
+
+    public function notifyAdminIncentive($employee, $amount, $reason)
+    {
+        $org = Setting::where('key', 'organization')->first();
+        $orgName = $org ? ($org->value['name'] ?? 'المؤسسة') : 'المؤسسة';
+        
+        $msg = "🏢 *{$orgName}* - إشعار إداري\n\n";
+        $msg .= "🎁 حافز\n";
+        $msg .= "الموظف: {$employee->name}\n";
+        $msg .= "المبلغ: " . number_format($amount) . " جنيه\n";
+        $msg .= "السبب: {$reason}\n";
+        
+        return $this->sendAdminNotification($msg);
+    }
+
+    public function notifyAdminDeduction($employee, $amount, $reason)
+    {
+        $org = Setting::where('key', 'organization')->first();
+        $orgName = $org ? ($org->value['name'] ?? 'المؤسسة') : 'المؤسسة';
+        
+        $msg = "🏢 *{$orgName}* - إشعار إداري\n\n";
+        $msg .= "💸 خصم\n";
+        $msg .= "الموظف: {$employee->name}\n";
+        $msg .= "المبلغ: " . number_format($amount) . " جنيه\n";
+        $msg .= "السبب: {$reason}\n";
+        
+        return $this->sendAdminNotification($msg);
+    }
+
+    public function notifyAdminResignation($employee, $status)
+    {
+        $org = Setting::where('key', 'organization')->first();
+        $orgName = $org ? ($org->value['name'] ?? 'المؤسسة') : 'المؤسسة';
+        
+        $statusText = match($status) {
+            'approved' => 'تمت الموافقة ✅',
+            'rejected' => 'تم الرفض ❌',
+            'pending' => 'قيد المراجعة ⏳',
+            default => $status,
+        };
+        
+        $msg = "🏢 *{$orgName}* - إشعار إداري\n\n";
+        $msg .= "📝 طلب استقالة\n";
+        $msg .= "الموظف: {$employee->name}\n";
+        $msg .= "الحالة: {$statusText}\n";
+        
+        return $this->sendAdminNotification($msg);
+    }
+
+    public function notifyAdminDailySummary($lateEmployees, $absentEmployees, $date)
+    {
+        $org = Setting::where('key', 'organization')->first();
+        $orgName = $org ? ($org->value['name'] ?? 'المؤسسة') : 'المؤسسة';
+        
+        $msg = "🏢 *{$orgName}* - ملخص يومي\n";
+        $msg .= "📅 {$date}\n\n";
+        
+        if (count($lateEmployees) > 0) {
+            $msg .= "⏰ المتأخرون (" . count($lateEmployees) . "):\n";
+            foreach ($lateEmployees as $emp) {
+                $msg .= "- {$emp['name']}: {$emp['minutes']} دقيقة\n";
+            }
+            $msg .= "\n";
+        }
+        
+        if (count($absentEmployees) > 0) {
+            $msg .= "🚫 الغياب (" . count($absentEmployees) . "):\n";
+            foreach ($absentEmployees as $name) {
+                $msg .= "- {$name}\n";
+            }
+            $msg .= "\n";
+        }
+        
+        if (count($lateEmployees) === 0 && count($absentEmployees) === 0) {
+            $msg .= "✅ لا يوجد متأخرين أو غياب اليوم\n";
+        }
+        
+        return $this->sendAdminNotification($msg);
     }
 
     private function formatPhone($phone)

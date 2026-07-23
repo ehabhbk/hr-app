@@ -43,6 +43,13 @@ class WarningsController extends Controller
             $whatsapp = new WhatsAppService();
             $whatsapp->sendWarningNotification($employee, $w);
 
+            // Admin notification
+            try {
+                $whatsapp->notifyAdminWarning($employee, $w);
+            } catch (\Exception $e) {
+                \Illuminate\Support\Facades\Log::error('WhatsApp admin notification error: ' . $e->getMessage());
+            }
+
             Notification::send(
                 auth()->id(),
                 'warning',

@@ -131,6 +131,13 @@ class LeavesController extends Controller
                 
                 $whatsapp->sendLeaveNotification($employee, $leave, 'approved');
                 
+                // Admin notification
+                try {
+                    $whatsapp->notifyAdminLeave($employee, $leave, 'approved');
+                } catch (\Exception $e) {
+                    \Illuminate\Support\Facades\Log::error('WhatsApp admin notification error: ' . $e->getMessage());
+                }
+                
                 Notification::send(
                     auth()->id(),
                     'leave',
@@ -145,6 +152,13 @@ class LeavesController extends Controller
             
             if ($employee) {
                 $whatsapp->sendLeaveNotification($employee, $leave, 'rejected');
+                
+                // Admin notification
+                try {
+                    $whatsapp->notifyAdminLeave($employee, $leave, 'rejected');
+                } catch (\Exception $e) {
+                    \Illuminate\Support\Facades\Log::error('WhatsApp admin notification error: ' . $e->getMessage());
+                }
                 
                 Notification::send(
                     auth()->id(),
