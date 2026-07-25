@@ -10,6 +10,8 @@ use Illuminate\Http\Request;
 
 class LeavesController extends Controller
 {
+    use LogsActivity;
+
     public function index()
     {
         $leaves = Leave::with('employee')->orderBy('created_at', 'desc')->get();
@@ -98,6 +100,8 @@ class LeavesController extends Controller
 
         $leave = Leave::create(array_merge($data, $leaveData));
 
+        $this->logActivity('leave_created', $leave, null, $data, 'طلب إجازة: ' . ($leave->employee->name ?? ''), $r);
+
         if ($employee) {
             Notification::send(
                 auth()->id(),
@@ -119,6 +123,8 @@ class LeavesController extends Controller
         $oldStatus = $leave->status;
         $leave->status = $r->status;
         $leave->save();
+
+        $this->logActivity('leave_status_updated', $leave, ['status' => $oldStatus], ['status' => $r->status], 'تحديث حالة إجازة: ' . $r->status, $r);
 
         $employee = Employee::find($leave->employee_id);
         $whatsapp = new WhatsAppService();

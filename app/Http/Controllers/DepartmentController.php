@@ -8,6 +8,8 @@ use App\Http\Resources\DepartmentResource;
 
 class DepartmentController extends Controller
 {
+    use LogsActivity;
+
     // عرض كل الأقسام مع الموظفين المرتبطين
     public function index()
     {
@@ -33,6 +35,8 @@ class DepartmentController extends Controller
 
         $department = Department::create($request->all());
 
+        $this->logActivity('department_created', $department, null, $request->all(), 'إضافة قسم: ' . ($request->input('name') ?? ''), $request);
+
         return new DepartmentResource($department);
     }
 
@@ -40,7 +44,9 @@ class DepartmentController extends Controller
     public function update(Request $request, $id)
     {
         $department = Department::findOrFail($id);
+        $old = $department->toArray();
         $department->update($request->all());
+        $this->logActivity('department_updated', $department, $old, $request->all(), 'تعديل قسم: ' . $department->name, $request);
 
         return new DepartmentResource($department);
     }
@@ -48,7 +54,10 @@ class DepartmentController extends Controller
     // حذف قسم
     public function destroy($id)
     {
-        Department::destroy($id);
+        $dept = Department::findOrFail($id);
+        $old = $dept->toArray();
+        $dept->delete();
+        $this->logActivity('department_deleted', null, $old, null, 'حذف قسم: ' . ($old['name'] ?? ''), request());
         return response()->json(['message' => 'تم حذف القسم بنجاح ✅']);
     }
 }

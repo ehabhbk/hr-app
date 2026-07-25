@@ -9,6 +9,8 @@ use Illuminate\Http\Request;
 
 class IncentivesController extends Controller
 {
+    use LogsActivity;
+
     public function index()
     {
         return response()->json(['data' => Incentive::with('employee')->orderBy('created_at', 'desc')->get()]);
@@ -29,6 +31,8 @@ class IncentivesController extends Controller
         // Button incentives from Employee.tsx are always one-time (not recurring)
         $data['is_recurring'] = false;
         $i = Incentive::create($data);
+
+        $this->logActivity('incentive_created', $i, null, $data, 'حافز: ' . ($i->employee->name ?? ''), $r);
 
         // Admin notification
         try {

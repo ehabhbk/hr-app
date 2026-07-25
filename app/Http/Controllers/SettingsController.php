@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\Storage;
 
 class SettingsController extends Controller
 {
+    use LogsActivity;
+
     public function index()
     {
         $all = Setting::all()->mapWithKeys(fn ($s) => [$s->key => $s->value]);
@@ -236,6 +238,7 @@ class SettingsController extends Controller
     {
         $data = $request->all();
         Setting::updateOrCreate(['key' => 'attendance'], ['value' => $data]);
+        $this->logActivity('attendance_settings_updated', null, null, $data, 'تحديث إعدادات الحضور', $request);
         
         // Recalculate all attendance records with new settings
         $records = \App\Models\AttendanceRecord::whereMonth('date', now()->month)
@@ -274,6 +277,7 @@ class SettingsController extends Controller
     {
         $data = $request->all();
         Setting::updateOrCreate(['key' => 'financials'], ['value' => $data]);
+        $this->logActivity('salary_settings_updated', null, null, $data, 'تحديث إعدادات المرتبات', $request);
         return response()->json(['data' => $data, 'message' => 'تم الحفظ']);
     }
 
@@ -323,6 +327,7 @@ class SettingsController extends Controller
     {
         $data = $request->all();
         Setting::updateOrCreate(['key' => 'leaves'], ['value' => $data]);
+        $this->logActivity('leave_settings_updated', null, null, $data, 'تحديث إعدادات الإجازات', $request);
         return response()->json(['data' => $data, 'message' => 'تم الحفظ']);
     }
 
@@ -353,6 +358,7 @@ class SettingsController extends Controller
     {
         $data = $request->all();
         Setting::updateOrCreate(['key' => 'advances'], ['value' => $data]);
+        $this->logActivity('advance_settings_updated', null, null, $data, 'تحديث إعدادات السلف', $request);
         return response()->json(['data' => $data, 'message' => 'تم الحفظ']);
     }
 

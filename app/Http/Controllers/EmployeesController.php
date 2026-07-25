@@ -12,6 +12,8 @@ use Jmrashed\Zkteco\Lib\ZKTeco;
 
 class EmployeesController extends Controller
 {
+    use LogsActivity;
+
     /**
      * تحويل وضع الإصبع إلى رقم على الجهاز
      */
@@ -222,6 +224,8 @@ class EmployeesController extends Controller
         }
 
         $employee = Employee::create($data);
+
+        $this->logActivity('employee_created', $employee, null, $r->except(['profile_photo', 'cv']), 'إضافة موظف: ' . $data['name'], $r);
 
         // Auto-register employee on device if requested (user + fingerprints)
         if ($r->boolean('register_on_device') && $employee->device_user_id && $employee->attendance_device_id) {
@@ -639,8 +643,10 @@ class EmployeesController extends Controller
 
         // Remove arrays from data before updating employee
         unset($data['allowances'], $data['incentives'], $data['assets'], $data['fingerprints']);
-        
+
+        $old = $employee->toArray();
         $employee->update($data);
+        $this->logActivity('employee_updated', $employee, $old, $r->except(['profile_photo', 'cv']), 'تعديل موظف: ' . $employee->name, $r);
 
         // Auto-register employee on device if requested (update case with fingerprints)
         if ($r->boolean('register_on_device') && $employee->device_user_id && $employee->attendance_device_id) {
@@ -777,7 +783,9 @@ class EmployeesController extends Controller
     public function destroy($id)
     {
         $employee = Employee::findOrFail($id);
+        $old = $employee->toArray();
         $employee->delete();
+        $this->logActivity('employee_deleted', null, $old, null, 'حذف موظف: ' . ($old['name'] ?? ''), request());
 
         return response()->json([
             'message' => 'تم حذف الموظف بنجاح',
@@ -800,7 +808,10 @@ class EmployeesController extends Controller
         $employee->termination_type = $data['termination_type'];
         $employee->termination_reason = $data['termination_reason'];
         $employee->termination_date = now()->toDateString();
+
+        $old = $employee->toArray();
         $employee->save();
+        $this->logActivity('employee_terminated', $employee, $old, $data, 'فصل موظف: ' . $employee->name, $request);
 
         // Admin notification
         try {
@@ -822,11 +833,13 @@ class EmployeesController extends Controller
     public function restore($id)
     {
         $employee = Employee::findOrFail($id);
+        $old = $employee->toArray();
         $employee->status = 'active';
         $employee->termination_type = null;
         $employee->termination_reason = null;
         $employee->termination_date = null;
         $employee->save();
+        $this->logActivity('employee_restored', $employee, $old, ['status' => 'active'], 'إعادة تفعيل موظف: ' . $employee->name, request());
 
         return response()->json([
             'data' => $employee,
@@ -892,6 +905,66 @@ class EmployeesController extends Controller
         return response()->json([
             'data' => null,
             'message' => 'تم حذف البصمة بنجاح',
+        ]);
+    }
+
+    public function expiringContracts(Request $request)
+    {
+        $days = $request->input('days', 30);
+        $employees = Employee::whereNotNull('contract_end_date')
+            ->where('contract_end_date', '>=', now())
+            ->where('contract_end_date', '<=', now()->addDays($days))
+            ->where('status', '!=', 'terminated')
+            ->orderBy('contract_end_date')
+            ->get()
+            ->map(fn($e) => [
+                'id' => $e->id,
+                'name' => $e->name,
+                'file_number' => $e->file_number,
+                'department' => $e->department?->name,
+                'contract_end_date' => $e->contract_end_date->format('Y-m-d'),
+                'days_remaining' => (int)now()->diffInDays($e->contract_end_date, false),
+            ]);
+        return response()->json(['data' => $employees]);
+    }
+
+    public function bulkImport(Request $request)
+    {
+        $request->validate([
+            'employees' => 'required|array|min:1',
+            'employees.*.file_number' => 'required|string',
+            'employees.*.name' => 'required|string',
+            'employees.*.email' => 'nullable|email',
+            'employees.*.phone' => 'nullable|string',
+            'employees.*.position' => 'nullable|string',
+            'employees.*.department_id' => 'nullable|exists:departments,id',
+            'employees.*.base_salary' => 'nullable|numeric',
+            'employees.*.hire_date' => 'nullable|date',
+            'employees.*.phone_country_code' => 'nullable|string',
+        ]);
+
+        $imported = [];
+        $errors = [];
+        $employees = $request->input('employees');
+
+        foreach ($employees as $index => $empData) {
+            try {
+                if (Employee::where('file_number', $empData['file_number'])->exists()) {
+                    $errors[] = ['row' => $index + 1, 'file_number' => $empData['file_number'], 'error' => 'رقم الملف موجود مسبقاً'];
+                    continue;
+                }
+                $employee = Employee::create($empData);
+                $imported[] = ['id' => $employee->id, 'name' => $employee->name, 'file_number' => $employee->file_number];
+            } catch (\Exception $e) {
+                $errors[] = ['row' => $index + 1, 'file_number' => $empData['file_number'] ?? '', 'error' => $e->getMessage()];
+            }
+        }
+
+        return response()->json([
+            'imported' => count($imported),
+            'errors' => count($errors),
+            'data' => $imported,
+            'error_details' => $errors,
         ]);
     }
 

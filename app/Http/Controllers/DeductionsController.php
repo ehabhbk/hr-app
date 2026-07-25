@@ -9,6 +9,8 @@ use Illuminate\Http\Request;
 
 class DeductionsController extends Controller
 {
+    use LogsActivity;
+
     public function index()
     {
         return response()->json(['data' => Deduction::with('employee')->orderBy('created_at', 'desc')->get()]);
@@ -27,6 +29,8 @@ class DeductionsController extends Controller
             $data['date'] = now()->toDateString();
         }
         $d = Deduction::create($data);
+
+        $this->logActivity('deduction_created', $d, null, $data, 'خصم: ' . ($d->employee->name ?? ''), $r);
 
         // Admin notification
         try {

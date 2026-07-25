@@ -10,6 +10,8 @@ use Illuminate\Http\Request;
 
 class AdvancesController extends Controller
 {
+    use LogsActivity;
+
     public function index()
     {
         $advances = AdvanceRequest::with('employee')->orderBy('created_at', 'desc')->get()->map(function ($a) {
@@ -244,6 +246,8 @@ class AdvancesController extends Controller
 
         $advance = AdvanceRequest::create($advanceData);
 
+        $this->logActivity('advance_created', $advance, null, $data, 'طلب سلفة: ' . ($advance->employee->name ?? ''), $r);
+
         if ($employee) {
             Notification::send(
                 auth()->id(),
@@ -287,6 +291,8 @@ class AdvancesController extends Controller
         
         $a->save();
 
+        $this->logActivity('advance_approved', $a, ['status' => 'pending'], ['status' => 'approved'], 'موافقة على سلفة', request());
+
         $employee = Employee::find($a->employee_id);
         $whatsapp = new WhatsAppService();
 
@@ -320,6 +326,8 @@ class AdvancesController extends Controller
         $a = AdvanceRequest::findOrFail($id);
         $a->status = 'rejected';
         $a->save();
+
+        $this->logActivity('advance_rejected', $a, ['status' => 'pending'], ['status' => 'rejected'], 'رفض سلفة', request());
 
         $employee = Employee::find($a->employee_id);
         $whatsapp = new WhatsAppService();

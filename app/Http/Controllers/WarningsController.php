@@ -10,6 +10,8 @@ use Illuminate\Http\Request;
 
 class WarningsController extends Controller
 {
+    use LogsActivity;
+
     public function index()
     {
         return response()->json(['data' => Warning::with(['employee', 'creator'])->orderBy('created_at', 'desc')->get()->map(function($w) {
@@ -33,6 +35,8 @@ class WarningsController extends Controller
         $data['created_by'] = auth()->id();
         
         $w = Warning::create($data);
+
+        $this->logActivity('warning_created', $w, null, $data, 'إنذار موظف: ' . ($w->employee->name ?? ''), $r);
 
         $employee = Employee::find($r->employee_id);
         
@@ -73,7 +77,9 @@ class WarningsController extends Controller
         }
         
         $warning = Warning::findOrFail($id);
+        $old = $warning->toArray();
         $warning->update(['status' => 'resolved']);
+        $this->logActivity('warning_resolved', $warning, $old, ['status' => 'resolved'], 'حل إنذار', $request);
 
         return response()->json(['message' => 'تم حل الإنذار بنجاح']);
     }

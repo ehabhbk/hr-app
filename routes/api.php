@@ -27,6 +27,8 @@ use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\SettlementController;
 use App\Http\Controllers\ShiftAssignmentController;
 use App\Http\Controllers\UploadController;
+use App\Http\Controllers\ActivityLogController;
+use App\Http\Controllers\AnnouncementController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\ResignationRequestController;
 use App\Http\Controllers\WarningsController;
@@ -144,6 +146,8 @@ Route::middleware('auth:sanctum')->group(function () {
     */
     Route::get('/employees', [EmployeesController::class, 'index']);
     Route::post('/employees', [EmployeesController::class, 'store']);
+    Route::get('/employees/expiring-contracts', [EmployeesController::class, 'expiringContracts']);
+    Route::post('/employees/bulk-import', [EmployeesController::class, 'bulkImport']);
     Route::get('/employees/{id}', [EmployeesController::class, 'show']);
     Route::put('/employees/{id}', [EmployeesController::class, 'update']);
     Route::delete('/employees/{id}', [EmployeesController::class, 'destroy']);
@@ -417,6 +421,19 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/settlements/calculate/{employeeId}', [SettlementController::class, 'calculateEmployee']);
     Route::get('/settlements/calculate', [SettlementController::class, 'calculateAllEmployees']);
     Route::get('/settlements/export/{employeeId}', [SettlementController::class, 'exportSettlementPdf']);
+
+    Route::get('/activity-logs', [ActivityLogController::class, 'index']);
+    Route::get('/activity-logs/actions', [ActivityLogController::class, 'getActions']);
+
+    /*
+    |-----------------------------------------------------------------------
+    | Announcements (الإعلانات الداخلية)
+    |-----------------------------------------------------------------------
+    */
+    Route::get('/announcements', [AnnouncementController::class, 'index']);
+    Route::post('/announcements', [AnnouncementController::class, 'store']);
+    Route::put('/announcements/{id}', [AnnouncementController::class, 'update']);
+    Route::delete('/announcements/{id}', [AnnouncementController::class, 'destroy']);
 
     /*
     |-----------------------------------------------------------------------

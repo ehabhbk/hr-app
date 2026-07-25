@@ -240,6 +240,20 @@ class DashboardController extends Controller
         // ==================== IDEAL EMPLOYEE ====================
         $idealEmployee = $this->getIdealEmployee($currentMonth, $currentYear);
 
+        // ==================== EXPIRING CONTRACTS ====================
+        $expiringContracts = Employee::whereNotNull('contract_end_date')
+            ->where('contract_end_date', '>=', now())
+            ->where('contract_end_date', '<=', now()->addDays(30))
+            ->where('status', '!=', 'terminated')
+            ->orderBy('contract_end_date')
+            ->get()
+            ->map(fn($e) => [
+                'id' => $e->id,
+                'name' => $e->name,
+                'contract_end_date' => $e->contract_end_date->format('Y-m-d'),
+                'days_remaining' => (int)now()->diffInDays($e->contract_end_date, false),
+            ]);
+
         // ==================== PENDING REQUESTS ====================
         $pendingLeaves = Leave::where('status', 'pending')->count();
         $pendingAdvances = AdvanceRequest::where('status', 'pending')->count();
@@ -298,6 +312,7 @@ class DashboardController extends Controller
             'ideal_employee' => $idealEmployee,
             'recent_activities' => $recentActivities,
             'department_stats' => $departmentStats,
+            'expiring_contracts' => $expiringContracts,
             'generated_at' => now()->format('Y-m-d H:i:s'),
         ]);
     }
