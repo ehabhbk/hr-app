@@ -45,6 +45,18 @@ class DashboardController extends Controller
             ->where('status', 'active')
             ->get();
 
+        // Currently working: employees who checked in today but haven't checked out
+        $currentlyWorking = 0;
+        $todayRecords = AttendanceRecord::where('date', $todayStr)->get();
+        foreach ($employeesWithShift as $emp) {
+            $isOnLeave = $onLeaveEmployeeIds->contains($emp->id);
+            if ($isOnLeave) continue;
+            $record = $todayRecords->firstWhere('employee_id', $emp->id);
+            if ($record && $record->check_in_time && !$record->check_out_time) {
+                $currentlyWorking++;
+            }
+        }
+
         // ==================== TODAY'S ATTENDANCE ====================
         $deviceUserIdsToday = AttendanceDeviceLog::whereDate('timestamp', $today)
             ->distinct('device_user_id')
@@ -281,6 +293,7 @@ class DashboardController extends Controller
                 'total_base_salaries' => $totalBaseSalaries,
                 'total_gross_salaries' => $totalGrossSalaries,
                 'absences_today' => $absentToday,
+                'currently_working' => $currentlyWorking,
                 'not_clocked_today' => $notClockedToday,
                 'late_today' => $lateToday,
                 'attendance_rate' => $attendanceRate,

@@ -484,6 +484,7 @@ class AttendanceRecordController extends Controller
         $employees = Employee::whereNotNull('work_shift_id')->with('workShift', 'leaves')->get();
 
         $processed = 0;
+        $alreadyAbsent = 0;
 
         foreach ($employees as $employee) {
             $shift = $employee->workShift;
@@ -514,9 +515,11 @@ class AttendanceRecordController extends Controller
                     ->first();
 
                 if ($record) {
-                    // If already has check-in/out or already marked absent, skip
-                    if ($record->check_in_time || $record->check_out_time || $record->is_absent) continue;
-                    // Mark existing record as absent
+                    if ($record->check_in_time || $record->check_out_time) continue;
+                    if ($record->is_absent) {
+                        $alreadyAbsent++;
+                        continue;
+                    }
                 }
 
                 // Calculate absence deduction
@@ -554,20 +557,25 @@ class AttendanceRecordController extends Controller
             }
         }
 
-        return $processed;
+        return ['new' => $processed, 'existing' => $alreadyAbsent, 'total' => $processed + $alreadyAbsent];
     }
 
     public function calculateAbsences(Request $request)
     {
         $fromDate = $request->from_date ?? now()->startOfMonth()->format('Y-m-d');
         $toDate = $request->to_date ?? now()->format('Y-m-d');
-        $count = $this->calculateAbsencesForPeriod($fromDate, $toDate);
-        $message = $count > 0
-            ? "تم احتساب $count يوم غياب"
+        $result = $this->calculateAbsencesForPeriod($fromDate, $toDate);
+        $total = $result['total'];
+        $new = $result['new'];
+        $existing = $result['existing'];
+        $message = $total > 0
+            ? "تم احتساب $total غياب" . ($new > 0 ? " ($new جديد، $existing مسبقاً)" : " (مسبقاً)")
             : "لم يتم احتساب أي غياب";
         return response()->json([
             'message' => $message,
-            'absences_count' => $count,
+            'absences_count' => $total,
+            'new_absences' => $new,
+            'existing_absences' => $existing,
         ]);
     }
 
@@ -680,11 +688,11 @@ class AttendanceRecordController extends Controller
         }
 
         // Auto-calculate absences for the same period
-        $absencesCount = $this->calculateAbsencesForPeriod($fromDate, $toDate);
+        $absencesResult = $this->calculateAbsencesForPeriod($fromDate, $toDate);
 
         return response()->json([
             'processed' => count($results),
-            'absences_marked' => $absencesCount,
+            'absences_marked' => $absencesResult['total'],
             'records' => $results,
         ]);
     }
