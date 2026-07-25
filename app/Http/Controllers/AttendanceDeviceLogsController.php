@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\AttendanceDevice;
 use App\Models\AttendanceDeviceLog;
 use App\Models\Employee;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 
 class AttendanceDeviceLogsController extends Controller
@@ -86,6 +87,20 @@ class AttendanceDeviceLogsController extends Controller
             'raw' => 'nullable|json',
         ]);
 
+        $time = Carbon::parse($validated['timestamp'])->toDateTimeString();
+
+        $recentExists = AttendanceDeviceLog::where('device_user_id', $validated['device_user_id'])
+            ->whereBetween('timestamp', [
+                Carbon::parse($time)->subMinutes(10)->toDateTimeString(),
+                Carbon::parse($time)->addMinutes(10)->toDateTimeString(),
+            ])
+            ->exists();
+
+        if ($recentExists) {
+            return response()->json(['message' => 'توجد بصمة مسجلة خلال 10 دقائق من هذا التوقيت'], 422);
+        }
+
+        $validated['timestamp'] = $time;
         $log = AttendanceDeviceLog::create($validated);
 
         return response()->json(['message' => 'تمت إضافة السجل بنجاح', 'data' => $log], 201);
