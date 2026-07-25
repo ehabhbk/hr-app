@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use App\Models\Role;
+use App\Models\Employee;
 
 class MeController extends Controller
 {
@@ -69,5 +70,27 @@ class MeController extends Controller
                 'message' => $e->getMessage()
             ], 500);
         }
+    }
+
+    public function updateProfile(Request $request)
+    {
+        $user = $request->user();
+        $employee = Employee::find($user->employee_id);
+        
+        if (!$employee) {
+            return response()->json(['message' => 'لا يوجد موظف مرتبط'], 404);
+        }
+
+        $data = $request->validate([
+            'phone' => 'nullable|string',
+            'phone_country_code' => 'nullable|string',
+            'address' => 'nullable|string',
+            'email' => 'nullable|email',
+            'bank_name' => 'nullable|string',
+            'bank_account' => 'nullable|string',
+        ]);
+
+        $employee->update($data);
+        return response()->json(['data' => $employee, 'message' => 'تم تحديث الملف الشخصي']);
     }
 }

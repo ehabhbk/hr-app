@@ -33,6 +33,11 @@ use App\Http\Controllers\UserController;
 use App\Http\Controllers\ResignationRequestController;
 use App\Http\Controllers\WarningsController;
 use App\Http\Controllers\WorkShiftController;
+use App\Http\Controllers\AttendanceExcuseController;
+use App\Http\Controllers\OffboardingController;
+use App\Http\Controllers\TrainingController;
+use App\Http\Controllers\ExpenseController;
+use App\Http\Controllers\GpsCheckinController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -233,6 +238,7 @@ Route::middleware('auth:sanctum')->group(function () {
     */
     Route::get('/attendance-records', [AttendanceRecordController::class, 'index']);
     Route::post('/attendance-records', [AttendanceRecordController::class, 'store']);
+    Route::put('/attendance-records/{id}', [AttendanceRecordController::class, 'update']);
     Route::post('/attendance-records/process-logs', [AttendanceRecordController::class, 'processFromDeviceLogs']);
     Route::get('/attendance-records/monthly-report', [AttendanceRecordController::class, 'monthlyReport']);
     Route::post('/attendance-records/recalculate', [AttendanceRecordController::class, 'recalculateAll']);
@@ -434,6 +440,36 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/announcements', [AnnouncementController::class, 'store']);
     Route::put('/announcements/{id}', [AnnouncementController::class, 'update']);
     Route::delete('/announcements/{id}', [AnnouncementController::class, 'destroy']);
+
+    // Attendance Excuses
+    Route::get('/attendance-excuses', [AttendanceExcuseController::class, 'index']);
+    Route::post('/attendance-excuses', [AttendanceExcuseController::class, 'store']);
+    Route::post('/attendance-excuses/{id}/review', [AttendanceExcuseController::class, 'review']);
+
+    // Offboarding
+    Route::get('/offboardings', [OffboardingController::class, 'index']);
+    Route::post('/offboardings', [OffboardingController::class, 'store']);
+    Route::put('/offboardings/{id}', [OffboardingController::class, 'update']);
+    Route::delete('/offboardings/{id}', [OffboardingController::class, 'destroy']);
+
+    // Training & Certificates
+    Route::get('/trainings', [TrainingController::class, 'index']);
+    Route::post('/trainings', [TrainingController::class, 'store']);
+    Route::put('/trainings/{id}', [TrainingController::class, 'update']);
+    Route::delete('/trainings/{id}', [TrainingController::class, 'destroy']);
+
+    // Expenses
+    Route::get('/expenses', [ExpenseController::class, 'index']);
+    Route::post('/expenses', [ExpenseController::class, 'store']);
+    Route::post('/expenses/{id}/review', [ExpenseController::class, 'review']);
+    Route::post('/expenses/{id}/pay', [ExpenseController::class, 'markPaid']);
+
+    // GPS Check-in
+    Route::post('/gps-checkin', [GpsCheckinController::class, 'store']);
+    Route::get('/gps-checkins', [GpsCheckinController::class, 'index']);
+
+    // Profile update from mobile
+    Route::put('/me/profile', [MeController::class, 'updateProfile']);
 
     /*
     |-----------------------------------------------------------------------

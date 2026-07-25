@@ -113,6 +113,65 @@ class AttendanceRecordController extends Controller
         return response()->json($record->load('employee'));
     }
 
+    public function update(Request $request, $id)
+    {
+        $record = AttendanceRecord::findOrFail($id);
+
+        $data = $request->validate([
+            'check_in_time' => 'nullable',
+            'check_out_time' => 'nullable',
+            'notes' => 'nullable|string',
+        ]);
+
+        $tz = 'Africa/Khartoum';
+        $updates = [];
+
+        if (array_key_exists('check_in_time', $data)) {
+            if (empty($data['check_in_time'])) {
+                $updates['check_in_time'] = null;
+                $updates['check_in_type'] = null;
+                $updates['has_delay'] = false;
+                $updates['delay_minutes'] = 0;
+                $updates['delay_deduction'] = 0;
+                $updates['delay_excused'] = false;
+            } else {
+                if (strpos($data['check_in_time'], '-') !== false || strpos($data['check_in_time'], 'T') !== false) {
+                    $updates['check_in_time'] = Carbon::parse($data['check_in_time'])->setTimezone($tz);
+                } else {
+                    $updates['check_in_time'] = Carbon::parse($record->date . ' ' . $data['check_in_time'], $tz);
+                }
+            }
+        }
+
+        if (array_key_exists('check_out_time', $data)) {
+            if (empty($data['check_out_time'])) {
+                $updates['check_out_time'] = null;
+                $updates['check_out_type'] = null;
+                $updates['check_out_early_minutes'] = 0;
+                $updates['early_leave_deduction'] = 0;
+                $updates['check_out_excused'] = false;
+            } else {
+                if (strpos($data['check_out_time'], '-') !== false || strpos($data['check_out_time'], 'T') !== false) {
+                    $updates['check_out_time'] = Carbon::parse($data['check_out_time'])->setTimezone($tz);
+                } else {
+                    $updates['check_out_time'] = Carbon::parse($record->date . ' ' . $data['check_out_time'], $tz);
+                }
+            }
+        }
+
+        if (isset($data['notes'])) {
+            $updates['notes'] = $data['notes'];
+        }
+
+        $record->update($updates);
+
+        // Recalculate deductions
+        $this->calculateDeductions($record);
+        $record->refresh();
+
+        return response()->json($record->load('employee'));
+    }
+
     public function excuseDelay(Request $request, $id)
     {
         $user = $request->user();
