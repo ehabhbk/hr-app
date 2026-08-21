@@ -10,6 +10,11 @@ use App\Models\AttendanceDeviceLog;
 use App\Models\AttendanceRecord;
 use App\Models\Setting;
 use App\Models\EmployeeEvaluation;
+use App\Models\TravelRequest;
+use App\Models\Complaint;
+use App\Models\OvertimeRequest;
+use App\Models\SmartAlert;
+use App\Models\Document;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
@@ -45,37 +50,47 @@ class DashboardController extends Controller
             ->where('status', 'active')
             ->get();
 
-        // Currently working: employees who checked in today but haven't checked out
-        $currentlyWorking = 0;
-        $todayRecords = AttendanceRecord::where('date', $todayStr)->get();
-        foreach ($employeesWithShift as $emp) {
-            $isOnLeave = $onLeaveEmployeeIds->contains($emp->id);
-            if ($isOnLeave) continue;
-            $record = $todayRecords->firstWhere('employee_id', $emp->id);
-            if ($record && $record->check_in_time && !$record->check_out_time) {
-                $currentlyWorking++;
-            }
-        }
+        // Currently working: checked in today but haven't checked out
+        $currentlyWorking = AttendanceRecord::where('date', $todayStr)
+            ->whereNotNull('check_in_time')
+            ->whereNull('check_out_time')
+            ->count();
 
         // ==================== TODAY'S ATTENDANCE ====================
         $deviceUserIdsToday = AttendanceDeviceLog::whereDate('timestamp', $today)
             ->distinct('device_user_id')
             ->pluck('device_user_id');
 
-        $presentToday = $deviceUserIdsToday->count();
+        // Present today = employees who checked in (have attendance record with check_in)
+        // This includes those who already checked out too
+        $presentToday = AttendanceRecord::where('date', $todayStr)
+            ->whereNotNull('check_in_time')
+            ->count();
+
         $lateToday = $this->countLateArrivals($today);
 
-        // Absent today: employees with shift, active, not on leave, no fingerprint today
+        // Get employees on travel mission (approved TravelRequest covering today)
+        $onTravelEmployeeIds = TravelRequest::where('status', 'approved')
+            ->where('from_date', '<=', $todayStr)
+            ->where('to_date', '>=', $todayStr)
+            ->pluck('employee_id')
+            ->unique();
+
+        // Absent today: employees with shift, active, not on leave, not on travel, no check-in today
         $absentToday = 0;
         $notClockedToday = 0;
         foreach ($employeesWithShift as $emp) {
-            $hasFingerprint = $deviceUserIdsToday->contains($emp->device_user_id);
+            $hasCheckIn = AttendanceRecord::where('employee_id', $emp->id)
+                ->where('date', $todayStr)
+                ->whereNotNull('check_in_time')
+                ->exists();
             $isOnLeave = $onLeaveEmployeeIds->contains($emp->id);
+            $isOnTravel = $onTravelEmployeeIds->contains($emp->id);
 
-            if (!$hasFingerprint && !$isOnLeave) {
+            if (!$hasCheckIn && !$isOnLeave && !$isOnTravel) {
                 $absentToday++;
             }
-            if (!$hasFingerprint) {
+            if (!$hasCheckIn) {
                 $notClockedToday++;
             }
         }
@@ -303,6 +318,11 @@ class DashboardController extends Controller
                 'leaves_this_month' => $leavesThisMonth,
                 'leaves_this_year' => $leavesThisYear,
                 'employees_with_shifts' => $employeesWithShift->count(),
+                'pending_travels' => TravelRequest::where('status', 'pending')->count(),
+                'open_complaints' => Complaint::where('status', 'open')->count(),
+                'approved_overtime_this_month' => OvertimeRequest::where('status', 'approved')->whereMonth('date', $currentMonth)->sum('hours'),
+                'expiring_documents' => Document::whereNotNull('expiry_date')->whereBetween('expiry_date', [now(), now()->addDays(30)])->count(),
+                'smart_alerts_count' => SmartAlert::where('is_read', false)->count(),
             ],
             'pie_charts' => [
                 'warnings' => $warningsPie,

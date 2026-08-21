@@ -38,6 +38,17 @@ use App\Http\Controllers\OffboardingController;
 use App\Http\Controllers\TrainingController;
 use App\Http\Controllers\ExpenseController;
 use App\Http\Controllers\GpsCheckinController;
+use App\Http\Controllers\TravelRequestController;
+use App\Http\Controllers\ComplaintController;
+use App\Http\Controllers\DocumentController;
+use App\Http\Controllers\GeofenceController;
+use App\Http\Controllers\OvertimeRequestController;
+use App\Http\Controllers\SalaryCertificateController;
+use App\Http\Controllers\IdpPlanController;
+use App\Http\Controllers\Review360Controller;
+use App\Http\Controllers\OkrGoalController;
+use App\Http\Controllers\SmartAlertController;
+use App\Http\Controllers\BackupController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -482,6 +493,122 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/employee-assets/{id}', [AssetController::class, 'update']);
     Route::delete('/employee-assets/{id}', [AssetController::class, 'destroy']);
     Route::post('/employee-assets/{id}/return', [AssetController::class, 'returnAsset']);
+
+    /*
+    |-----------------------------------------------------------------------
+    | Travel Requests (السفر والبعثات)
+    |-----------------------------------------------------------------------
+    */
+    Route::get('/travel-requests', [TravelRequestController::class, 'index']);
+    Route::post('/travel-requests', [TravelRequestController::class, 'store']);
+    Route::post('/travel-requests/{id}/approve', [TravelRequestController::class, 'approve']);
+    Route::post('/travel-requests/{id}/reject', [TravelRequestController::class, 'reject']);
+    Route::post('/travel-requests/{id}/complete', [TravelRequestController::class, 'complete']);
+    Route::delete('/travel-requests/{id}', [TravelRequestController::class, 'destroy']);
+
+    /*
+    |-----------------------------------------------------------------------
+    | Complaints & Suggestions (الشكاوى والاقتراحات)
+    |-----------------------------------------------------------------------
+    */
+    Route::get('/complaints', [ComplaintController::class, 'index']);
+    Route::post('/complaints', [ComplaintController::class, 'store']);
+    Route::put('/complaints/{id}', [ComplaintController::class, 'update']);
+    Route::delete('/complaints/{id}', [ComplaintController::class, 'destroy']);
+
+    /*
+    |-----------------------------------------------------------------------
+    | Documents (الوثائق المركزية)
+    |-----------------------------------------------------------------------
+    */
+    Route::get('/documents', [DocumentController::class, 'index']);
+    Route::post('/documents', [DocumentController::class, 'store']);
+    Route::put('/documents/{id}', [DocumentController::class, 'update']);
+    Route::delete('/documents/{id}', [DocumentController::class, 'destroy']);
+
+    /*
+    |-----------------------------------------------------------------------
+    | Geofences (المناطق الجغرافية)
+    |-----------------------------------------------------------------------
+    */
+    Route::get('/geofences', [GeofenceController::class, 'index']);
+    Route::post('/geofences', [GeofenceController::class, 'store']);
+    Route::put('/geofences/{id}', [GeofenceController::class, 'update']);
+    Route::delete('/geofences/{id}', [GeofenceController::class, 'destroy']);
+    Route::post('/geofences/check', [GeofenceController::class, 'checkLocation']);
+
+    /*
+    |-----------------------------------------------------------------------
+    | Overtime Requests (طلبات الأوفرتايم)
+    |-----------------------------------------------------------------------
+    */
+    Route::get('/overtime-requests', [OvertimeRequestController::class, 'index']);
+    Route::post('/overtime-requests', [OvertimeRequestController::class, 'store']);
+    Route::post('/overtime-requests/{id}/approve', [OvertimeRequestController::class, 'approve']);
+    Route::post('/overtime-requests/{id}/reject', [OvertimeRequestController::class, 'reject']);
+    Route::delete('/overtime-requests/{id}', [OvertimeRequestController::class, 'destroy']);
+
+    /*
+    |-----------------------------------------------------------------------
+    | Salary Certificates (شهادات الراتب)
+    |-----------------------------------------------------------------------
+    */
+    Route::get('/salary-certificates', [SalaryCertificateController::class, 'index']);
+    Route::post('/salary-certificates', [SalaryCertificateController::class, 'store']);
+    Route::put('/salary-certificates/{id}', [SalaryCertificateController::class, 'update']);
+    Route::delete('/salary-certificates/{id}', [SalaryCertificateController::class, 'destroy']);
+
+    /*
+    |-----------------------------------------------------------------------
+    | IDP Plans (خطط التطوير الفردي)
+    |-----------------------------------------------------------------------
+    */
+    Route::get('/idp-plans', [IdpPlanController::class, 'index']);
+    Route::post('/idp-plans', [IdpPlanController::class, 'store']);
+    Route::put('/idp-plans/{id}', [IdpPlanController::class, 'update']);
+    Route::delete('/idp-plans/{id}', [IdpPlanController::class, 'destroy']);
+
+    /*
+    |-----------------------------------------------------------------------
+    | 360 Reviews (تقييم 360 درجة)
+    |-----------------------------------------------------------------------
+    */
+    Route::get('/reviews-360', [Review360Controller::class, 'index']);
+    Route::post('/reviews-360', [Review360Controller::class, 'store']);
+    Route::get('/reviews-360/summary', [Review360Controller::class, 'summary']);
+    Route::delete('/reviews-360/{id}', [Review360Controller::class, 'destroy']);
+
+    /*
+    |-----------------------------------------------------------------------
+    | OKR Goals (أهداف OKR)
+    |-----------------------------------------------------------------------
+    */
+    Route::get('/okr-goals', [OkrGoalController::class, 'index']);
+    Route::post('/okr-goals', [OkrGoalController::class, 'store']);
+    Route::put('/okr-goals/{id}', [OkrGoalController::class, 'update']);
+    Route::delete('/okr-goals/{id}', [OkrGoalController::class, 'destroy']);
+
+    /*
+    |-----------------------------------------------------------------------
+    | Smart Alerts (التنبيهات الذكية)
+    |-----------------------------------------------------------------------
+    */
+    Route::get('/smart-alerts', [SmartAlertController::class, 'index']);
+    Route::get('/smart-alerts/unread-count', [SmartAlertController::class, 'unreadCount']);
+    Route::post('/smart-alerts/generate', [SmartAlertController::class, 'generateAlerts']);
+    Route::post('/smart-alerts/{id}/read', [SmartAlertController::class, 'markAsRead']);
+    Route::post('/smart-alerts/read-all', [SmartAlertController::class, 'markAllAsRead']);
+    Route::delete('/smart-alerts/{id}', [SmartAlertController::class, 'destroy']);
+
+    /*
+    |-----------------------------------------------------------------------
+    | Backups (النسخ الاحتياطي)
+    |-----------------------------------------------------------------------
+    */
+    Route::get('/backups', [BackupController::class, 'index']);
+    Route::post('/backups', [BackupController::class, 'create']);
+    Route::get('/backups/{id}/download', [BackupController::class, 'download']);
+    Route::delete('/backups/{id}', [BackupController::class, 'destroy']);
 });
 
 // Test route (no auth)

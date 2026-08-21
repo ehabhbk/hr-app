@@ -229,6 +229,7 @@ class SettingsController extends Controller
             'absence_after_minutes' => 60,
             'absence_deduction_days' => 1,
             'termination_after_days' => 30,
+            'fingerprint_mode' => 'auto_in_out',
         ];
 
         return response()->json(['data' => $data]);

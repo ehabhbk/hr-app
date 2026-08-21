@@ -9,6 +9,7 @@ use App\Models\WorkShift;
 use App\Models\Setting;
 use App\Models\Warning;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
 class AttendanceRecordController extends Controller
@@ -26,6 +27,14 @@ class AttendanceRecordController extends Controller
             $query->where('employee_id', $request->employee_id);
         }
         
+        // Support month parameter (YYYY-MM format) for calendar page
+        if ($request->month && !$request->from_date && !$request->to_date) {
+            $monthStart = Carbon::parse($request->month . '-01')->startOfMonth();
+            $monthEnd = $monthStart->copy()->endOfMonth();
+            $query->where('date', '>=', $monthStart->toDateString());
+            $query->where('date', '<=', $monthEnd->toDateString());
+        }
+        
         if ($request->from_date) {
             $query->where('date', '>=', $request->from_date);
         }
@@ -34,7 +43,8 @@ class AttendanceRecordController extends Controller
             $query->where('date', '<=', $request->to_date);
         }
         
-        $records = $query->orderBy('date', 'desc')->paginate(50);
+        $perPage = $request->input('per_page', 50);
+        $records = $query->orderBy('date', 'desc')->paginate($perPage);
         
         // Add device info from attendance_device_logs
         $records->getCollection()->transform(function($record) {
@@ -64,6 +74,8 @@ class AttendanceRecordController extends Controller
             'date' => 'required|date',
             'check_in_time' => 'nullable',
             'check_out_time' => 'nullable',
+            'check_in_type' => 'nullable|string|in:early,on_time,late',
+            'check_out_type' => 'nullable|string|in:early,on_time,late',
             'notes' => 'nullable|string',
         ]);
         
@@ -107,6 +119,18 @@ class AttendanceRecordController extends Controller
             $this->calculateDeductions($record);
         }
         
+        // Apply manual type overrides after calculation
+        $typeUpdates = [];
+        if (!empty($data['check_in_type'])) {
+            $typeUpdates['check_in_type'] = $data['check_in_type'];
+        }
+        if (!empty($data['check_out_type'])) {
+            $typeUpdates['check_out_type'] = $data['check_out_type'];
+        }
+        if ($typeUpdates) {
+            $record->update($typeUpdates);
+        }
+        
         // Refresh to get calculated values
         $record->refresh();
         
@@ -120,25 +144,29 @@ class AttendanceRecordController extends Controller
         $data = $request->validate([
             'check_in_time' => 'nullable',
             'check_out_time' => 'nullable',
+            'check_in_type' => 'nullable|string|in:early,on_time,late',
+            'check_out_type' => 'nullable|string|in:early,on_time,late',
             'notes' => 'nullable|string',
         ]);
 
         $tz = 'Africa/Khartoum';
         $updates = [];
 
+        $dateStr = is_string($record->date) ? substr($record->date, 0, 10) : $record->date->format('Y-m-d');
+
         if (array_key_exists('check_in_time', $data)) {
             if (empty($data['check_in_time'])) {
                 $updates['check_in_time'] = null;
                 $updates['check_in_type'] = null;
                 $updates['has_delay'] = false;
-                $updates['delay_minutes'] = 0;
+                $updates['check_in_delay_minutes'] = 0;
                 $updates['delay_deduction'] = 0;
                 $updates['delay_excused'] = false;
             } else {
-                if (strpos($data['check_in_time'], '-') !== false || strpos($data['check_in_time'], 'T') !== false) {
+                if (strpos($data['check_in_time'], 'T') !== false) {
                     $updates['check_in_time'] = Carbon::parse($data['check_in_time'])->setTimezone($tz);
                 } else {
-                    $updates['check_in_time'] = Carbon::parse($record->date . ' ' . $data['check_in_time'], $tz);
+                    $updates['check_in_time'] = Carbon::parse($dateStr . ' ' . $data['check_in_time'], $tz);
                 }
             }
         }
@@ -151,12 +179,31 @@ class AttendanceRecordController extends Controller
                 $updates['early_leave_deduction'] = 0;
                 $updates['check_out_excused'] = false;
             } else {
-                if (strpos($data['check_out_time'], '-') !== false || strpos($data['check_out_time'], 'T') !== false) {
+                if (strpos($data['check_out_time'], 'T') !== false) {
                     $updates['check_out_time'] = Carbon::parse($data['check_out_time'])->setTimezone($tz);
                 } else {
-                    $updates['check_out_time'] = Carbon::parse($record->date . ' ' . $data['check_out_time'], $tz);
+                    $updates['check_out_time'] = Carbon::parse($dateStr . ' ' . $data['check_out_time'], $tz);
                 }
             }
+        }
+
+        $manualCheckInType = null;
+        $manualCheckOutType = null;
+
+        if (!empty($data['check_in_type'])) {
+            $manualCheckInType = $data['check_in_type'];
+            $updates['check_in_type'] = $data['check_in_type'];
+            if ($data['check_in_type'] === 'late' && $record->check_in_delay_minutes > 0) {
+                $updates['has_delay'] = true;
+            } elseif ($data['check_in_type'] === 'on_time' || $data['check_in_type'] === 'early') {
+                $updates['has_delay'] = false;
+                $updates['delay_deduction'] = 0;
+            }
+        }
+
+        if (!empty($data['check_out_type'])) {
+            $manualCheckOutType = $data['check_out_type'];
+            $updates['check_out_type'] = $data['check_out_type'];
         }
 
         if (isset($data['notes'])) {
@@ -165,8 +212,8 @@ class AttendanceRecordController extends Controller
 
         $record->update($updates);
 
-        // Recalculate deductions
-        $this->calculateDeductions($record);
+        $this->calculateDeductions($record, $manualCheckInType, $manualCheckOutType);
+
         $record->refresh();
 
         return response()->json($record->load('employee'));
@@ -263,7 +310,7 @@ class AttendanceRecordController extends Controller
         return response()->json($record->load('employee'));
     }
 
-    public function calculateDeductions(AttendanceRecord $record)
+    public function calculateDeductions(AttendanceRecord $record, ?string $manualCheckInType = null, ?string $manualCheckOutType = null)
     {
         $employee = $record->employee;
         $tz = 'Africa/Khartoum';
@@ -286,9 +333,13 @@ class AttendanceRecordController extends Controller
             ? (int)$attendanceSettings['delay_before_deduction'] 
             : 1;
         
-        // Get employee's shift
+        // Get employee's shift (supports rotation)
         $shift = null;
-        if ($employee->work_shift_id) {
+        $recordDate = $record->date instanceof Carbon ? $record->date->format('Y-m-d') : $record->date;
+        $effectiveShiftId = $employee->getEffectiveShiftForDate($recordDate);
+        if ($effectiveShiftId) {
+            $shift = WorkShift::find($effectiveShiftId);
+        } elseif ($employee->work_shift_id) {
             $shift = WorkShift::find($employee->work_shift_id);
         }
         
@@ -323,7 +374,7 @@ class AttendanceRecordController extends Controller
         $expectedHours = ($shift && $shift->daily_hours) ? $shift->daily_hours : 8;
         
         // Calculate check-in type
-        if ($record->check_in_time) {
+        if ($record->check_in_time && !$manualCheckInType) {
             // Handle date properly
             $recordDate = $record->date instanceof Carbon ? $record->date->format('Y-m-d') : $record->date;
             
@@ -419,7 +470,7 @@ class AttendanceRecordController extends Controller
         }
 
         // Calculate check-out type (always runs, not a deduction)
-        if ($record->check_out_time) {
+        if ($record->check_out_time && !$manualCheckOutType) {
             $recordDate = $record->date instanceof Carbon ? $record->date->format('Y-m-d') : $record->date;
             $shiftEndTime = Carbon::parse($recordDate . ' ' . $shiftEnd, $tz);
             
@@ -481,13 +532,25 @@ class AttendanceRecordController extends Controller
     public function calculateAbsencesForPeriod($fromDate, $toDate)
     {
         $tz = 'Africa/Khartoum';
-        $employees = Employee::whereNotNull('work_shift_id')->with('workShift', 'leaves')->get();
+        
+        // Get attendance settings
+        $settings = Setting::where('key', 'attendance')->first();
+        $attendanceSettings = $settings ? $settings->value : [];
+        $absenceAfterMinutes = isset($attendanceSettings['absence_after_minutes']) 
+            ? (int) $attendanceSettings['absence_after_minutes'] 
+            : 60;
+        
+        $employees = Employee::where(function($q) {
+            $q->whereNotNull('work_shift_id')->orWhereNotNull('rotation_shift_ids');
+        })->with('workShift', 'leaves')->get();
 
         $processed = 0;
         $alreadyAbsent = 0;
 
         foreach ($employees as $employee) {
-            $shift = $employee->workShift;
+            // Get effective shift for the first day to check basic shift validity
+            $effectiveShiftId = $employee->getEffectiveShiftForDate($fromDate);
+            $shift = $effectiveShiftId ? WorkShift::find($effectiveShiftId) : $employee->workShift;
             if (!$shift || !$shift->week_days || !is_array($shift->week_days)) continue;
 
             $workDays = $shift->week_days;
@@ -496,8 +559,13 @@ class AttendanceRecordController extends Controller
             $endDate = Carbon::parse($toDate);
 
             for ($date = $startDate->copy(); $date->lte($endDate); $date->addDay()) {
+                // Get effective shift for this specific date (supports rotation)
+                $dayShiftId = $employee->getEffectiveShiftForDate($date);
+                $dayShift = $dayShiftId ? WorkShift::find($dayShiftId) : $shift;
+                if (!$dayShift || !$dayShift->week_days || !is_array($dayShift->week_days)) continue;
+
                 $dayOfWeek = (int) $date->format('w'); // 0=Sunday, 6=Saturday
-                if (!in_array($dayOfWeek, $workDays)) continue;
+                if (!in_array($dayOfWeek, $dayShift->week_days)) continue;
 
                 $dateStr = $date->format('Y-m-d');
 
@@ -508,6 +576,14 @@ class AttendanceRecordController extends Controller
                         && $leave->to_date->format('Y-m-d') >= $dateStr;
                 });
                 if ($activeLeave) continue;
+
+                // Skip if employee has approved travel mission covering this day
+                $activeTravel = \App\Models\TravelRequest::where('employee_id', $employee->id)
+                    ->where('status', 'approved')
+                    ->where('from_date', '<=', $dateStr)
+                    ->where('to_date', '>=', $dateStr)
+                    ->exists();
+                if ($activeTravel) continue;
 
                 // Find existing attendance record
                 $record = AttendanceRecord::where('employee_id', $employee->id)
@@ -520,6 +596,17 @@ class AttendanceRecordController extends Controller
                         $alreadyAbsent++;
                         continue;
                     }
+                }
+
+                // Check if we're still within the absence grace period
+                // Only mark absent if current time is past shift start + absence_after_minutes
+                $now = Carbon::now($tz);
+                $shiftStartTime = Carbon::parse($dateStr . ' ' . $dayShift->start_time, $tz);
+                $absenceDeadline = $shiftStartTime->copy()->addMinutes($absenceAfterMinutes);
+                
+                // For past dates, always mark absent. For today, check the deadline.
+                if ($dateStr === $now->format('Y-m-d') && $now->lt($absenceDeadline)) {
+                    continue; // Still within grace period for today
                 }
 
                 // Calculate absence deduction
@@ -591,8 +678,11 @@ class AttendanceRecordController extends Controller
         $settings = Setting::where('key', 'attendance')->first();
         $attendanceSettings = $settings ? $settings->value : [];
         $allowedDelayMinutes = $attendanceSettings['allowed_delay_minutes'] ?? 5;
+        $fingerprintMode = $attendanceSettings['fingerprint_mode'] ?? 'auto_in_out';
         
-        $query = AttendanceDeviceLog::whereBetween('timestamp', [$fromDate . ' 00:00:00', $toDate . ' 23:59:59']);
+        $query = AttendanceDeviceLog::where('timestamp', '>=', $fromDate . ' 00:00:00')
+            ->where('timestamp', '<=', $toDate . ' 23:59:59')
+            ->whereNull('processed_at');
         
         if ($employeeId) {
             $query->where('device_user_id', $employeeId);
@@ -604,7 +694,167 @@ class AttendanceRecordController extends Controller
         
         $logs = $query->orderBy('timestamp')->get();
         
-        // Group by employee and date
+        if ($fingerprintMode === 'auto_in_out') {
+            // Smart mode: first punch = check-in, second = check-out, alternating
+            return $this->processAutoInOut($logs, $fromDate, $toDate, $allowedDelayMinutes);
+        }
+        
+        // Legacy mode: group by employee+date, first = check-in, last = check-out
+        return $this->processLegacyMode($logs, $fromDate, $toDate, $allowedDelayMinutes);
+    }
+    
+    // Smart fingerprint mode: per-day processing with debounce
+    // Each day: first punch = check-in, second = check-out
+    private function processAutoInOut($logs, $fromDate, $toDate, $allowedDelayMinutes)
+    {
+        $tz = 'Africa/Khartoum';
+        $results = [];
+        $debounceMinutes = 10;
+        $processedLogIds = [];
+        
+        // Group by employee
+        $logsByEmployee = $logs->groupBy('device_user_id');
+        
+        foreach ($logsByEmployee as $deviceUserId => $employeeLogs) {
+            $employee = Employee::where('device_user_id', $deviceUserId)->first();
+            if (!$employee) {
+                $processedLogIds = array_merge($processedLogIds, $employeeLogs->pluck('id')->toArray());
+                continue;
+            }
+            
+            // Group by date
+            $logsByDate = $employeeLogs->groupBy(fn($log) => Carbon::parse($log->timestamp)->setTimezone($tz)->format('Y-m-d'));
+            
+            $openCheckInRecord = null;
+            
+            $dates = array_keys($logsByDate->toArray());
+            sort($dates);
+            
+            foreach ($dates as $date) {
+                $dayLogs = $logsByDate[$date];
+                if ($date < $fromDate || $date > $toDate) {
+                    $processedLogIds = array_merge($processedLogIds, $dayLogs->pluck('id')->toArray());
+                    continue;
+                }
+                
+                $sortedLogs = $dayLogs->sortBy(fn($log) => $log->timestamp);
+                
+                // Debounce within this day
+                $filteredLogs = [];
+                $lastAcceptedTime = null;
+                
+                foreach ($sortedLogs as $log) {
+                    $logTime = Carbon::parse($log->timestamp)->setTimezone($tz);
+                    
+                    if ($lastAcceptedTime) {
+                        $diffMinutes = $lastAcceptedTime->diffInMinutes($logTime);
+                        if ($diffMinutes < $debounceMinutes) {
+                            $processedLogIds[] = $log->id;
+                            continue;
+                        }
+                    }
+                    
+                    $filteredLogs[] = $log;
+                    $lastAcceptedTime = $logTime;
+                }
+                
+                if (empty($filteredLogs)) continue;
+                
+                $firstLog = $filteredLogs[0];
+                $lastLog = $filteredLogs[count($filteredLogs) - 1];
+                $firstTime = Carbon::parse($firstLog->timestamp)->setTimezone($tz);
+
+                // Mark all filtered logs as processed (first, last, and any middle ones)
+                foreach ($filteredLogs as $fl) {
+                    $processedLogIds[] = $fl->id;
+                }
+                
+                if (count($filteredLogs) === 1) {
+                    // Single punch
+                    $singleHour = $firstTime->hour * 60 + $firstTime->minute;
+                    $isLatePunch = $singleHour >= 18 * 60; // after 6 PM = possible overnight check-in
+
+                    if (!$isLatePunch && $openCheckInRecord) {
+                        // Morning/afternoon punch closes yesterday's overnight open check-in
+                        $openCheckInRecord->check_out_time = $firstTime;
+                        $openCheckInRecord->save();
+                        $this->calculateDeductions($openCheckInRecord);
+                        $results[] = $openCheckInRecord;
+                        $openCheckInRecord = null;
+                    }
+
+                    // Create check-in record for this punch
+                    $record = AttendanceRecord::updateOrCreate(
+                        ['employee_id' => $employee->id, 'date' => $date],
+                        ['check_in_time' => $firstTime]
+                    );
+                    $this->calculateDeductions($record);
+                    $results[] = $record;
+
+                    // Only carry forward if late evening (possible overnight)
+                    $openCheckInRecord = $isLatePunch ? $record : null;
+
+                } else {
+                    // Two+ punches: first = check-in, last = check-out
+                    $lastTime = Carbon::parse($lastLog->timestamp)->setTimezone($tz);
+                    $processedLogIds[] = $lastLog->id;
+
+                    // Close overnight open record if today starts early
+                    if ($openCheckInRecord) {
+                        $firstHour = $firstTime->hour * 60 + $firstTime->minute;
+                        if ($firstHour < 12 * 60) {
+                            $openCheckInRecord->check_out_time = $firstTime;
+                            $openCheckInRecord->save();
+                            $this->calculateDeductions($openCheckInRecord);
+                            $results[] = $openCheckInRecord;
+                        }
+                        $openCheckInRecord = null;
+                    }
+                    
+                    $record = AttendanceRecord::updateOrCreate(
+                        ['employee_id' => $employee->id, 'date' => $date],
+                        [
+                            'check_in_time' => $firstTime,
+                            'check_out_time' => $lastTime,
+                        ]
+                    );
+                    $this->calculateDeductions($record);
+                    $results[] = $record;
+                }
+            }
+            
+            // If there's still an open record at the end, just keep it
+        }
+        
+        // Mark all processed logs (ignore unique constraint conflicts from concurrent sync)
+        if (!empty($processedLogIds)) {
+            $now = now()->toDateTimeString();
+            foreach (array_chunk($processedLogIds, 50) as $chunk) {
+                try {
+                    DB::table('attendance_device_logs')
+                        ->whereIn('id', $chunk)
+                        ->whereNull('processed_at')
+                        ->update(['processed_at' => $now]);
+                } catch (\Exception $e) {
+                    \Log::error('Failed to mark device logs as processed: ' . $e->getMessage());
+                }
+            }
+        }
+        
+        $absencesResult = $this->calculateAbsencesForPeriod($fromDate, $toDate);
+        
+        return response()->json([
+            'processed' => count($results),
+            'absences_marked' => $absencesResult['total'],
+            'records' => $results,
+        ]);
+    }
+    
+    // Legacy mode: first record per day = check-in, last = check-out
+    private function processLegacyMode($logs, $fromDate, $toDate, $allowedDelayMinutes)
+    {
+        $processedLogIds = [];
+        
         $groupedLogs = $logs->groupBy(function($log) {
             return $log->device_user_id . '_' . Carbon::parse($log->timestamp)->format('Y-m-d');
         });
@@ -616,26 +866,22 @@ class AttendanceRecordController extends Controller
             $deviceUserId = $parts[0];
             $date = $parts[1];
             
-            // Find employee by device_user_id
             $employee = Employee::where('device_user_id', $deviceUserId)->first();
-            if (!$employee) continue;
+            if (!$employee) {
+                $processedLogIds = array_merge($processedLogIds, $userLogs->pluck('id')->toArray());
+                continue;
+            }
             
-            // Sort by timestamp
-            $sortedLogs = $userLogs->sortBy(function($log) {
-                return $log->timestamp;
-            });
+            $sortedLogs = $userLogs->sortBy(fn($log) => $log->timestamp);
             
-            // For single-button devices: first record = check-in, last record = check-out
             $firstLog = $sortedLogs->first();
             $lastLog = $sortedLogs->last();
             
-            // If there's only one record, use it as check-in
             $checkIn = $firstLog;
             $checkOut = ($sortedLogs->count() > 1) ? $lastLog : null;
             
-            // Ensure check-out is after check-in
             if ($checkOut && $checkIn && Carbon::parse($checkOut->timestamp)->lt(Carbon::parse($checkIn->timestamp))) {
-                $checkOut = null; // Invalid checkout time
+                $checkOut = null;
             }
             
             $record = AttendanceRecord::updateOrCreate(
@@ -647,12 +893,26 @@ class AttendanceRecordController extends Controller
             );
             
             $this->calculateDeductions($record);
-            
             $results[] = $record;
+            $processedLogIds = array_merge($processedLogIds, $userLogs->pluck('id')->toArray());
         }
         
-        // Post-process: if employee has check-in on Day N without check-out
-        // and has a check-in on Day N+1, move Day N+1's first punch to Day N as check-out
+        // Mark all processed logs
+        if (!empty($processedLogIds)) {
+            $now = now()->toDateTimeString();
+            foreach (array_chunk($processedLogIds, 50) as $chunk) {
+                try {
+                    DB::table('attendance_device_logs')
+                        ->whereIn('id', $chunk)
+                        ->whereNull('processed_at')
+                        ->update(['processed_at' => $now]);
+                } catch (\Exception $e) {
+                    \Log::error('Failed to mark device logs as processed (legacy): ' . $e->getMessage());
+                }
+            }
+        }
+        
+        // Post-process overnight shifts
         $employeeIds = array_unique(array_map(fn($r) => $r->employee_id, $results));
         foreach ($employeeIds as $empId) {
             $empRecords = collect($results)->where('employee_id', $empId)->sortBy('date')->values();
@@ -661,33 +921,26 @@ class AttendanceRecordController extends Controller
                 $current = $empRecords[$i];
                 $next = $empRecords[$i + 1];
                 
-                // Current day has check-in but no check-out, and next day has a check-in
                 if ($current->check_in_time && !$current->check_out_time && $next->check_in_time) {
                     $nextDate = $next->date instanceof Carbon ? $next->date->format('Y-m-d') : $next->date;
                     $currentDate = $current->date instanceof Carbon ? $current->date->format('Y-m-d') : $current->date;
                     
-                    // Only if next day is the immediate next day
                     $currentDateObj = Carbon::parse($currentDate);
                     $nextDateObj = Carbon::parse($nextDate);
                     
                     if ($nextDateObj->diffInDays($currentDateObj) === 1) {
-                        // Move next day's check-in to current day as check-out
                         $nextCheckIn = $next->check_in_time;
-                        
                         $current->check_out_time = $nextCheckIn;
                         $current->save();
-                        
                         $next->check_in_time = null;
                         $next->check_out_time = null;
                         $next->save();
-                        
                         $this->calculateDeductions($current);
                     }
                 }
             }
         }
 
-        // Auto-calculate absences for the same period
         $absencesResult = $this->calculateAbsencesForPeriod($fromDate, $toDate);
 
         return response()->json([
@@ -788,8 +1041,13 @@ class AttendanceRecordController extends Controller
         $fromDate = $request->from_date ?? now()->startOfMonth()->format('Y-m-d');
         $toDate = $request->to_date ?? now()->format('Y-m-d');
         
-        $records = AttendanceRecord::with(['employee.attendanceDevice'])
-            ->whereBetween('date', [$fromDate, $toDate])
+        $query = AttendanceRecord::with(['employee.attendanceDevice']);
+        
+        if ($request->employee_id) {
+            $query->where('employee_id', $request->employee_id);
+        }
+        
+        $records = $query->whereBetween('date', [$fromDate, $toDate])
             ->orderBy('date', 'desc')
             ->get();
         
@@ -819,7 +1077,14 @@ class AttendanceRecordController extends Controller
         $orgName = $orgData['name'] ?? 'مؤسسة Jawda HR';
         $html .= '<h1>' . $orgName . '</h1>';
         $html .= '<h2>تقرير سجلات الحضور والانصراف</h2>';
-        $html .= '<div class="header-info"><p>من تاريخ: ' . $fromDate . ' | إلى تاريخ: ' . $toDate . '</p></div>';
+        $employeeLabel = '';
+        if ($request->employee_id) {
+            $employee = \App\Models\Employee::find($request->employee_id);
+            if ($employee) {
+                $employeeLabel = '<p><strong>الموظف:</strong> ' . $employee->name . '</p>';
+            }
+        }
+        $html .= '<div class="header-info">' . $employeeLabel . '<p>من تاريخ: ' . $fromDate . ' | إلى تاريخ: ' . $toDate . '</p></div>';
         
         $html .= '<table>';
         $html .= '<thead><tr>';

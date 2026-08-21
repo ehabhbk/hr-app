@@ -14,6 +14,16 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping()
             ->runInBackground();
 
+        $schedule->call(function () {
+            $controller = new \App\Http\Controllers\AttendanceRecordController();
+            $request = new \Illuminate\Http\Request();
+            $request->merge([
+                'from_date' => now()->format('Y-m-d'),
+                'to_date' => now()->format('Y-m-d'),
+            ]);
+            $controller->processFromDeviceLogs($request);
+        })->everyFiveMinutes()->withoutOverlapping();
+
         $schedule->command('notifications:leave-reminders')
             ->dailyAt('09:00')
             ->withoutOverlapping();

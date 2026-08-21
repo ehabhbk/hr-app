@@ -151,119 +151,74 @@ class BankExportController extends Controller
         $monthLabel = $monthNames[$month - 1] ?? $month;
         $bankName = BankExport::getBankNameArabic($export->bank_name);
 
-        $pdf = new \TCPDF('L', 'mm', 'A4', true, 'UTF-8', false);
-        $pdf->SetCreator('Jawda HR');
-        $pdf->SetAuthor($orgData['name'] ?? 'HR System');
-        $pdf->SetTitle("كشف تحويل مرتبات - {$bankName}");
-        $pdf->setRTL(true);
-        $pdf->setPrintHeader(false);
-        $pdf->setPrintFooter(false);
-        $pdf->SetMargins(5, 5, 5);
-        $pdf->SetAutoPageBreak(true, 10);
-        $pdf->AddPage();
-
-        // Header
-        $pdf->SetFont('aealarabiya', '', 20);
-        $pdf->SetTextColor(30, 58, 95);
-        $pdf->Cell(0, 12, "كشف تحويل مرتبات - {$bankName}", 0, 1, 'C');
-        $pdf->SetFont('aealarabiya', '', 14);
-        $pdf->SetTextColor(71, 85, 105);
-        $orgName = $orgData['name'] ?? '';
-        if ($orgName) {
-            $pdf->Cell(0, 8, $orgName, 0, 1, 'C');
-        }
-        $pdf->Cell(0, 8, "الشهر: {$monthLabel} {$year}", 0, 1, 'C');
-        $pdf->SetTextColor(100, 116, 139);
-        $pdf->SetFont('aealarabiya', '', 10);
-        $pdf->Cell(0, 6, "تاريخ الطباعة: " . now()->format('Y-m-d H:i:s'), 0, 1, 'C');
-        $pdf->Ln(3);
-
-        // Separator line
-        $pdf->SetDrawColor(30, 58, 95);
-        $pdf->SetLineWidth(0.5);
-        $pdf->Line(5, $pdf->GetY(), 292, $pdf->GetY());
-        $pdf->Ln(5);
-
-        // Table columns
-        $rowH = 10;
-        $headerH = 12;
-        $cols = [8, 60, 40, 40, 58, 65];
-        $headerLabels = ['#', 'اسم الموظف', 'الوظيفة', 'القسم', 'رقم الحساب', 'صافي المرتب'];
-
-        $bottomMargin = 10;
-        $pageHeight = $pdf->getPageHeight();
-
-        $drawHeader = function() use ($pdf, $cols, $headerLabels, $headerH) {
-            $pdf->SetFillColor(30, 58, 95);
-            $pdf->SetTextColor(255, 255, 255);
-            $pdf->SetFont('aealarabiya', '', 14);
-            for ($i = 0; $i < count($headerLabels); $i++) {
-                $pdf->Cell($cols[$i], $headerH, $headerLabels[$i], 1, 0, 'C', true);
-            }
-            $pdf->Ln();
-        };
-
-        $drawHeader();
-
+        $rows = [];
         $calculatedTotal = 0;
         $idx = 1;
-        $pdf->SetTextColor(0, 0, 0);
-        $pdf->SetFont('aealarabiya', '', 13);
-
         foreach ($employees as $emp) {
-            // Page break check
-            if ($pdf->GetY() + $rowH > $pageHeight - $bottomMargin) {
-                $pdf->AddPage();
-                $pdf->SetFont('aealarabiya', '', 18);
-                $pdf->SetTextColor(30, 58, 95);
-                $pdf->Cell(0, 10, "كشف تحويل مرتبات - {$bankName} (تابع)", 0, 1, 'C');
-                $pdf->SetTextColor(71, 85, 105);
-                $pdf->SetFont('aealarabiya', '', 10);
-                $pdf->Cell(0, 6, $orgName, 0, 1, 'C');
-                $pdf->Ln(2);
-                $drawHeader();
-                $pdf->SetTextColor(0, 0, 0);
-                $pdf->SetFont('aealarabiya', '', 13);
-            }
-
             $s = $salaryMap[$emp->id] ?? ['net_salary' => 0];
             $netSalary = (float)($s['net_salary'] ?? 0);
             $calculatedTotal += $netSalary;
-
-            // Alternating row colors
-            if ($idx % 2 === 0) {
-                $pdf->SetFillColor(248, 250, 252);
-            } else {
-                $pdf->SetFillColor(255, 255, 255);
-            }
-
-            $pdf->Cell($cols[0], $rowH, (string)$idx, 1, 0, 'C', true);
-            $pdf->Cell($cols[1], $rowH, $emp->name ?? '-', 1, 0, 'C', true);
-            $pdf->Cell($cols[2], $rowH, $emp->position ?? '-', 1, 0, 'C', true);
-            $pdf->Cell($cols[3], $rowH, $emp->department->name ?? '-', 1, 0, 'C', true);
-            $pdf->Cell($cols[4], $rowH, $emp->bank_account ?? '-', 1, 0, 'C', true);
-            $pdf->Cell($cols[5], $rowH, number_format($netSalary, 2) . ' ج.س', 1, 0, 'C', true);
-            $pdf->Ln();
-            $idx++;
+            $rows[] = [
+                'idx' => $idx++,
+                'name' => $emp->name ?? '-',
+                'position' => $emp->position ?? '-',
+                'department' => $emp->department->name ?? '-',
+                'bank_account' => $emp->bank_account ?? '-',
+                'net_salary' => number_format($netSalary, 2),
+            ];
         }
 
-        // Total row
-        $pdf->SetFont('aealarabiya', 'B', 14);
-        $pdf->SetFillColor(239, 246, 255);
-        $pdf->SetTextColor(22, 163, 74);
-        $pdf->Cell($cols[0] + $cols[1] + $cols[2] + $cols[3], 10, 'الإجمالي', 1, 0, 'C', true);
-        $pdf->Cell($cols[4], 10, '', 1, 0, 'C', true);
-        $pdf->Cell($cols[5], 10, number_format($calculatedTotal, 2) . ' ج.س', 1, 0, 'C', true);
+        $orgName = $orgData['name'] ?? '';
+
+        $html = '<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8"><style>
+            body { font-family: "DejaVu Sans", "Noto Sans Arabic", Arial, sans-serif; margin: 0; padding: 15px; direction: rtl; }
+            h1 { text-align: center; color: #1e3a5f; font-size: 22px; margin: 0 0 5px 0; }
+            .org { text-align: center; color: #475569; font-size: 16px; margin: 2px 0; }
+            .date { text-align: center; color: #64748b; font-size: 11px; margin: 2px 0 8px 0; }
+            .line { border-top: 2px solid #1e3a5f; margin: 8px 0; }
+            table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+            th { background: #1e3a5f; color: white; padding: 10px 6px; border: 1px solid #1e3a5f; font-size: 14px; text-align: center; }
+            td { padding: 8px 6px; border: 1px solid #d1d5db; font-size: 13px; text-align: center; }
+            tr:nth-child(even) { background: #f8fafc; }
+            .total td { background: #eff6ff; color: #16a34a; font-weight: bold; font-size: 14px; }
+            .footer { text-align: center; color: #94a3b8; font-size: 10px; margin-top: 15px; }
+        </style></head><body>
+            <h1>كشف تحويل مرتبات - ' . htmlspecialchars($bankName) . '</h1>';
+        if ($orgName) {
+            $html .= '<div class="org">' . htmlspecialchars($orgName) . '</div>';
+        }
+        $html .= '<div class="org">الشهر: ' . $monthLabel . ' ' . $year . '</div>';
+        $html .= '<div class="date">تاريخ الطباعة: ' . now()->format('Y-m-d H:i:s') . '</div>';
+        $html .= '<div class="line"></div>';
+        $html .= '<table><thead><tr>
+            <th>#</th><th>اسم الموظف</th><th>الوظيفة</th><th>القسم</th><th>رقم الحساب</th><th>صافي المرتب</th>
+        </tr></thead><tbody>';
+
+        foreach ($rows as $row) {
+            $html .= '<tr>
+                <td>' . $row['idx'] . '</td>
+                <td>' . htmlspecialchars($row['name']) . '</td>
+                <td>' . htmlspecialchars($row['position']) . '</td>
+                <td>' . htmlspecialchars($row['department']) . '</td>
+                <td>' . htmlspecialchars($row['bank_account']) . '</td>
+                <td>' . $row['net_salary'] . ' ج.س</td>
+            </tr>';
+        }
+
+        $html .= '<tr class="total">
+            <td colspan="5">الإجمالي</td>
+            <td>' . number_format($calculatedTotal, 2) . ' ج.س</td>
+        </tr>';
+
+        $html .= '</tbody></table></body></html>';
+
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadHtml($html)
+            ->setPaper('a4', 'landscape')
+            ->setOrientation('landscape');
 
         $filename = "كشف_تحويل_{$export->bank_name}_{$monthLabel}_{$year}.pdf";
-        $pdfContent = $pdf->Output($filename, 'S');
 
-        return response($pdfContent, 200)
-            ->header('Content-Type', 'application/octet-stream')
-            ->header('Content-Disposition', 'attachment; filename="' . $filename . '"')
-            ->header('Access-Control-Allow-Origin', '*')
-            ->header('Access-Control-Allow-Methods', 'GET, OPTIONS')
-            ->header('Access-Control-Allow-Headers', '*');
+        return $pdf->download($filename);
     }
 
     public function getBanks()

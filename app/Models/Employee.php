@@ -90,6 +90,10 @@ class Employee extends Model
         'birth_date',
         'id_number',
         'marital_status',
+
+        // shift rotation
+        'rotation_shift_ids',
+        'rotation_start_date',
     ];
 
     /**
@@ -112,6 +116,7 @@ class Employee extends Model
         'warnings' => 'integer',
         'insurance_amount' => 'decimal:2',
         'birth_date' => 'date',
+        'rotation_start_date' => 'date',
     ];
 
     /**
@@ -140,6 +145,25 @@ class Employee extends Model
     public function workShift()
     {
         return $this->belongsTo(WorkShift::class, 'work_shift_id');
+    }
+
+    public function getEffectiveShiftForDate($date = null)
+    {
+        $date = $date ? Carbon::parse($date) : Carbon::now();
+        $rotationShiftIds = $this->rotation_shift_ids;
+        $rotationStartDate = $this->rotation_start_date;
+
+        if (!empty($rotationShiftIds) && $rotationStartDate) {
+            $shiftIds = is_array($rotationShiftIds) ? $rotationShiftIds : json_decode($rotationShiftIds, true);
+            if (!empty($shiftIds)) {
+                $start = Carbon::parse($rotationStartDate);
+                $daysDiff = $start->diffInDays($date);
+                $index = $daysDiff % count($shiftIds);
+                return $shiftIds[$index];
+            }
+        }
+
+        return $this->work_shift_id;
     }
 
     /**
