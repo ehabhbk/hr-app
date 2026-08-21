@@ -33,6 +33,7 @@ use App\Http\Controllers\UserController;
 use App\Http\Controllers\ResignationRequestController;
 use App\Http\Controllers\WarningsController;
 use App\Http\Controllers\WorkShiftController;
+use App\Http\Controllers\RotationGroupController;
 use App\Http\Controllers\AttendanceExcuseController;
 use App\Http\Controllers\OffboardingController;
 use App\Http\Controllers\TrainingController;
@@ -241,6 +242,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/shift-assignments', [ShiftAssignmentController::class, 'index']);
     Route::post('/shift-assignments', [ShiftAssignmentController::class, 'store']);
     Route::delete('/shift-assignments/{id}', [ShiftAssignmentController::class, 'destroy']);
+
+    Route::get('/rotation-groups', [RotationGroupController::class, 'index']);
+    Route::post('/rotation-groups', [RotationGroupController::class, 'store']);
+    Route::put('/rotation-groups/{id}', [RotationGroupController::class, 'update']);
+    Route::delete('/rotation-groups/{id}', [RotationGroupController::class, 'destroy']);
+    Route::post('/rotation-groups/preview', [RotationGroupController::class, 'preview']);
 
     /*
     |-----------------------------------------------------------------------

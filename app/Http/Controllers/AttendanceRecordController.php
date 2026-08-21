@@ -541,8 +541,10 @@ class AttendanceRecordController extends Controller
             : 60;
         
         $employees = Employee::where(function($q) {
-            $q->whereNotNull('work_shift_id')->orWhereNotNull('rotation_shift_ids');
-        })->with('workShift', 'leaves')->get();
+            $q->whereNotNull('work_shift_id')
+              ->orWhereNotNull('rotation_shift_ids')
+              ->orWhereNotNull('rotation_group_id');
+        })->with('workShift', 'leaves', 'rotationGroup')->get();
 
         $processed = 0;
         $alreadyAbsent = 0;
@@ -584,6 +586,9 @@ class AttendanceRecordController extends Controller
                     ->where('to_date', '>=', $dateStr)
                     ->exists();
                 if ($activeTravel) continue;
+
+                // Skip if employee is not working this day (rotation group)
+                if (!$employee->isWorkingOnDate($date)) continue;
 
                 // Find existing attendance record
                 $record = AttendanceRecord::where('employee_id', $employee->id)

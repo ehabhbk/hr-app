@@ -94,6 +94,7 @@ class Employee extends Model
         // shift rotation
         'rotation_shift_ids',
         'rotation_start_date',
+        'rotation_group_id',
     ];
 
     /**
@@ -147,9 +148,44 @@ class Employee extends Model
         return $this->belongsTo(WorkShift::class, 'work_shift_id');
     }
 
+    public function rotationGroup()
+    {
+        return $this->belongsTo(RotationGroup::class, 'rotation_group_id');
+    }
+
+    /**
+     * Check if this employee should work on a given date based on rotation group.
+     * Returns true if: no rotation group (always works) OR employee is assigned for this date.
+     */
+    public function isWorkingOnDate($date = null): bool
+    {
+        $date = $date ? Carbon::parse($date) : Carbon::now();
+
+        if (!$this->rotation_group_id) {
+            return true;
+        }
+
+        $group = $this->rotationGroup;
+        if (!$group || !$group->active) {
+            return true;
+        }
+
+        return $group->isEmployeeWorking($this->id, $date);
+    }
+
     public function getEffectiveShiftForDate($date = null)
     {
         $date = $date ? Carbon::parse($date) : Carbon::now();
+
+        // Check rotation group first
+        if ($this->rotation_group_id) {
+            $group = $this->rotationGroup;
+            if ($group && $group->active && $group->shift_id) {
+                return $group->shift_id;
+            }
+        }
+
+        // Fall back to old per-employee rotation
         $rotationShiftIds = $this->rotation_shift_ids;
         $rotationStartDate = $this->rotation_start_date;
 
