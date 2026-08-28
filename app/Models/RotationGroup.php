@@ -11,6 +11,7 @@ class RotationGroup extends Model
         'name',
         'shift_id',
         'start_date',
+        'rotation_days',
         'employee_ids',
         'active',
     ];
@@ -18,6 +19,7 @@ class RotationGroup extends Model
     protected $casts = [
         'employee_ids' => 'array',
         'start_date' => 'date',
+        'rotation_days' => 'integer',
         'active' => 'boolean',
     ];
 
@@ -47,7 +49,11 @@ class RotationGroup extends Model
         }
 
         $daysDiff = (int) $start->diffInDays($date);
-        $index = $daysDiff % count($employeeIds);
+
+        // Number of consecutive days each employee works before rotating.
+        // e.g. rotation_days = 1 -> day-by-day, 2 -> two days per employee, ...
+        $period = max(1, (int) $this->rotation_days);
+        $index = (int) floor($daysDiff / $period) % count($employeeIds);
 
         return $employeeIds[$index];
     }

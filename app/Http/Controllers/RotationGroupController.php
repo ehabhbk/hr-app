@@ -20,6 +20,7 @@ class RotationGroupController extends Controller
             'name' => 'required|string',
             'shift_id' => 'required|exists:work_shifts,id',
             'start_date' => 'required|date',
+            'rotation_days' => 'nullable|integer|min:1|max:90',
             'employee_ids' => 'required|array|min:2',
             'employee_ids.*' => 'exists:employees,id',
         ]);
@@ -41,6 +42,7 @@ class RotationGroupController extends Controller
             'name' => 'sometimes|string',
             'shift_id' => 'sometimes|exists:work_shifts,id',
             'start_date' => 'sometimes|date',
+            'rotation_days' => 'sometimes|integer|min:1|max:90',
             'employee_ids' => 'sometimes|array|min:2',
             'employee_ids.*' => 'exists:employees,id',
             'active' => 'sometimes|boolean',
@@ -84,18 +86,20 @@ class RotationGroupController extends Controller
             'employee_ids' => 'required|array|min:2',
             'start_date' => 'required|date',
             'days' => 'nullable|integer|min:1|max:60',
+            'rotation_days' => 'nullable|integer|min:1|max:90',
         ]);
 
         $employeeIds = $data['employee_ids'];
         $startDate = $data['start_date'];
         $days = $data['days'] ?? 14;
+        $period = max(1, (int) ($data['rotation_days'] ?? 1));
 
         $employees = Employee::whereIn('id', $employeeIds)->pluck('name', 'id');
 
         $schedule = [];
         for ($i = 0; $i < $days; $i++) {
             $date = \Carbon\Carbon::parse($startDate)->addDays($i);
-            $index = $i % count($employeeIds);
+            $index = (int) floor($i / $period) % count($employeeIds);
             $empId = $employeeIds[$index];
             $schedule[] = [
                 'date' => $date->toDateString(),

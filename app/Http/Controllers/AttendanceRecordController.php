@@ -714,7 +714,7 @@ class AttendanceRecordController extends Controller
     {
         $tz = 'Africa/Khartoum';
         $results = [];
-        $debounceMinutes = 10;
+        $debounceMinutes = 15; // أقل من ربع ساعة بين بصمتين تُتجاهل البصمة الثانية
         $processedLogIds = [];
         
         // Group by employee
@@ -765,66 +765,36 @@ class AttendanceRecordController extends Controller
                 
                 if (empty($filteredLogs)) continue;
                 
-                $firstLog = $filteredLogs[0];
-                $lastLog = $filteredLogs[count($filteredLogs) - 1];
-                $firstTime = Carbon::parse($firstLog->timestamp)->setTimezone($tz);
+                // Alternating rule: each accepted punch toggles the open state.
+                // If there is an open check-in, this punch becomes a checkout, even if it
+                // happens on the next day (e.g. punched attendance today and only punches
+                // again tomorrow -> tomorrow's first punch is a checkout).
+                // Otherwise this punch opens a new check-in record for its own date.
+                foreach ($filteredLogs as $punch) {
+                    $punchTime = Carbon::parse($punch->timestamp)->setTimezone($tz);
+                    $punchDate = $punchTime->format('Y-m-d');
 
-                // Mark all filtered logs as processed (first, last, and any middle ones)
-                foreach ($filteredLogs as $fl) {
-                    $processedLogIds[] = $fl->id;
-                }
-                
-                if (count($filteredLogs) === 1) {
-                    // Single punch
-                    $singleHour = $firstTime->hour * 60 + $firstTime->minute;
-                    $isLatePunch = $singleHour >= 18 * 60; // after 6 PM = possible overnight check-in
+                    // Mark as processed
+                    $processedLogIds[] = $punch->id;
 
-                    if (!$isLatePunch && $openCheckInRecord) {
-                        // Morning/afternoon punch closes yesterday's overnight open check-in
-                        $openCheckInRecord->check_out_time = $firstTime;
+                    if ($openCheckInRecord) {
+                        // The fingerprint that follows an attendance/check-in is a checkout,
+                        // even if it is on the next day.
+                        $openCheckInRecord->check_out_time = $punchTime;
                         $openCheckInRecord->save();
                         $this->calculateDeductions($openCheckInRecord);
                         $results[] = $openCheckInRecord;
                         $openCheckInRecord = null;
+                    } else {
+                        // Fresh check-in for this punch's date, kept open until the next punch.
+                        $record = AttendanceRecord::updateOrCreate(
+                            ['employee_id' => $employee->id, 'date' => $punchDate],
+                            ['check_in_time' => $punchTime]
+                        );
+                        $this->calculateDeductions($record);
+                        $results[] = $record;
+                        $openCheckInRecord = $record;
                     }
-
-                    // Create check-in record for this punch
-                    $record = AttendanceRecord::updateOrCreate(
-                        ['employee_id' => $employee->id, 'date' => $date],
-                        ['check_in_time' => $firstTime]
-                    );
-                    $this->calculateDeductions($record);
-                    $results[] = $record;
-
-                    // Only carry forward if late evening (possible overnight)
-                    $openCheckInRecord = $isLatePunch ? $record : null;
-
-                } else {
-                    // Two+ punches: first = check-in, last = check-out
-                    $lastTime = Carbon::parse($lastLog->timestamp)->setTimezone($tz);
-                    $processedLogIds[] = $lastLog->id;
-
-                    // Close overnight open record if today starts early
-                    if ($openCheckInRecord) {
-                        $firstHour = $firstTime->hour * 60 + $firstTime->minute;
-                        if ($firstHour < 12 * 60) {
-                            $openCheckInRecord->check_out_time = $firstTime;
-                            $openCheckInRecord->save();
-                            $this->calculateDeductions($openCheckInRecord);
-                            $results[] = $openCheckInRecord;
-                        }
-                        $openCheckInRecord = null;
-                    }
-                    
-                    $record = AttendanceRecord::updateOrCreate(
-                        ['employee_id' => $employee->id, 'date' => $date],
-                        [
-                            'check_in_time' => $firstTime,
-                            'check_out_time' => $lastTime,
-                        ]
-                    );
-                    $this->calculateDeductions($record);
-                    $results[] = $record;
                 }
             }
             
