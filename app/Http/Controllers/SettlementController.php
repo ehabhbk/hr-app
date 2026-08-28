@@ -194,7 +194,7 @@ class SettlementController extends Controller
         
         $html = '
         <style>
-            body { font-family: dejavusans, sans-serif; direction: rtl; font-size: 10px; color: #1e293b; }
+            body { font-family: Amiri, dejavusans, sans-serif; direction: rtl; font-size: 10px; color: #1e293b; }
             table { width: 100%; border-collapse: collapse; }
             th, td { border: 1px solid #cbd5e1; padding: 6px 8px; }
             th { background: #1e3a5f; color: white; font-weight: bold; text-align: center; font-size: 10px; }

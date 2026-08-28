@@ -81,56 +81,143 @@ class SettingsController extends Controller
         \Illuminate\Support\Facades\Log::info('Organization update: received data', $request->all());
         
         try {
-            $data = [];
-            
-            $data['name'] = $request->input('name', '');
-            $data['address'] = $request->input('address', '');
-            $data['phone'] = $request->input('phone', '');
-            $data['email'] = $request->input('email', '');
-            $data['tax_number'] = $request->input('tax_number', '');
-            $data['commercial_register'] = $request->input('commercial_register', '');
-            $data['activity'] = $request->input('activity', '');
-            $data['employee_count'] = $request->input('employee_count', '');
-            $data['foundation_year'] = $request->input('foundation_year', '');
-            $data['currency'] = $request->input('currency', 'SDG');
-            $data['currency_symbol'] = $request->input('currency_symbol', 'جنيه');
-
             $existing = Setting::where('key', 'organization')->first();
             $existingData = $existing ? $existing->value : [];
 
-            if ($request->hasFile('logo')) {
-                $logo = $request->file('logo');
-                $logoName = 'logos/' . time() . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $logo->getClientOriginalName());
-                $logo->move(storage_path('app/public/logos'), $logoName);
-                $data['logo'] = $logoName;
-            } else {
-                $data['logo'] = $existingData['logo'] ?? null;
-            }
+            $data = [
+                'name' => $request->input('name', $existingData['name'] ?? ''),
+                'address' => $request->input('address', $existingData['address'] ?? ''),
+                'phone' => $request->input('phone', $existingData['phone'] ?? ''),
+                'email' => $request->input('email', $existingData['email'] ?? ''),
+                'tax_number' => $request->input('tax_number', $existingData['tax_number'] ?? ''),
+                'commercial_register' => $request->input('commercial_register', $existingData['commercial_register'] ?? ''),
+                'activity' => $request->input('activity', $existingData['activity'] ?? ''),
+                'employee_count' => $request->input('employee_count', $existingData['employee_count'] ?? ''),
+                'foundation_year' => $request->input('foundation_year', $existingData['foundation_year'] ?? ''),
+                'currency' => $request->input('currency', $existingData['currency'] ?? 'SDG'),
+                'currency_symbol' => $request->input('currency_symbol', $existingData['currency_symbol'] ?? 'جنيه'),
+                'general_manager_name' => $request->input('general_manager_name', $existingData['general_manager_name'] ?? ''),
+                'hr_manager_name' => $request->input('hr_manager_name', $existingData['hr_manager_name'] ?? ''),
+                'finance_manager_name' => $request->input('finance_manager_name', $existingData['finance_manager_name'] ?? ''),
+                'logo' => $existingData['logo'] ?? null,
+                'stamp' => $existingData['stamp'] ?? null,
+                'gm_signature' => $existingData['gm_signature'] ?? null,
+                'hr_signature' => $existingData['hr_signature'] ?? null,
+                'finance_signature' => $existingData['finance_signature'] ?? null,
+            ];
 
+            if ($request->hasFile('logo')) {
+                $file = $request->file('logo');
+                $name = 'logos/' . time() . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $file->getClientOriginalName());
+                $file->move(storage_path('app/public/logos'), $name);
+                $this->syncToPublicStorage($name);
+                $data['logo'] = $name;
+            }
             if ($request->hasFile('stamp')) {
-                $stamp = $request->file('stamp');
-                $stampName = 'stamps/' . time() . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $stamp->getClientOriginalName());
-                $stamp->move(storage_path('app/public/stamps'), $stampName);
-                $data['stamp'] = $stampName;
-            } else {
-                $data['stamp'] = $existingData['stamp'] ?? null;
+                $file = $request->file('stamp');
+                $name = 'stamps/' . time() . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $file->getClientOriginalName());
+                $file->move(storage_path('app/public/stamps'), $name);
+                $this->syncToPublicStorage($name);
+                $data['stamp'] = $name;
+            }
+            if ($request->hasFile('gm_signature')) {
+                $file = $request->file('gm_signature');
+                $name = 'signatures/' . time() . '_gm_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $file->getClientOriginalName());
+                $file->move(storage_path('app/public/signatures'), $name);
+                $this->syncToPublicStorage($name);
+                $data['gm_signature'] = $name;
+            }
+            if ($request->hasFile('hr_signature')) {
+                $file = $request->file('hr_signature');
+                $name = 'signatures/' . time() . '_hr_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $file->getClientOriginalName());
+                $file->move(storage_path('app/public/signatures'), $name);
+                $this->syncToPublicStorage($name);
+                $data['hr_signature'] = $name;
+            }
+            if ($request->hasFile('finance_signature')) {
+                $file = $request->file('finance_signature');
+                $name = 'signatures/' . time() . '_finance_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $file->getClientOriginalName());
+                $file->move(storage_path('app/public/signatures'), $name);
+                $this->syncToPublicStorage($name);
+                $data['finance_signature'] = $name;
             }
 
             $setting = Setting::updateOrCreate(['key' => 'organization'], ['value' => $data]);
 
-            $responseData = $setting->value;
-            if ($responseData['logo']) {
-                $responseData['logo_url'] = '/storage/' . $responseData['logo'];
-            }
-            if ($responseData['stamp']) {
-                $responseData['stamp_url'] = '/storage/' . $responseData['stamp'];
-            }
-
-            return response()->json(['data' => $responseData, 'message' => 'تم الحفظ بنجاح']);
+            return response()->json(['data' => $setting->value, 'message' => 'تم الحفظ بنجاح']);
         } catch (\Exception $e) {
             \Illuminate\Support\Facades\Log::error('Organization save error: ' . $e->getMessage());
             return response()->json(['error' => $e->getMessage()], 500);
         }
+    }
+
+    private function syncToPublicStorage($relativePath)
+    {
+        $src = storage_path('app/public/' . $relativePath);
+        $dest = public_path('storage/' . $relativePath);
+        if (file_exists($src)) {
+            $dir = dirname($dest);
+            if (!is_dir($dir)) { mkdir($dir, 0755, true); }
+            copy($src, $dest);
+        }
+    }
+
+    public function getPdfSettings()
+    {
+        $settings = Setting::where('key', 'pdf_settings')->first();
+        return response()->json(['data' => $settings ? $settings->value : $this->defaultPdfSettings()]);
+    }
+
+    public function updatePdfSettings(Request $request)
+    {
+        try {
+            $defaults = $this->defaultPdfSettings();
+            $data = array_merge($defaults, $request->only([
+                'margin_top', 'margin_bottom', 'margin_left', 'margin_right',
+                'logo_width', 'logo_height', 'logo_position',
+                'stamp_width', 'stamp_height', 'stamp_position',
+                'font_size', 'line_height',
+                'show_header', 'show_footer', 'show_stamp', 'show_signatures',
+                'show_gm_signature', 'show_hr_signature', 'show_finance_signature',
+                'header_text', 'footer_text',
+                'gm_title', 'hr_title', 'finance_title',
+            ]));
+
+            Setting::updateOrCreate(['key' => 'pdf_settings'], ['value' => $data]);
+            return response()->json(['data' => $data, 'message' => 'تم حفظ إعدادات PDF بنجاح']);
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    private function defaultPdfSettings()
+    {
+        return [
+            'margin_top' => 15,
+            'margin_bottom' => 15,
+            'margin_left' => 15,
+            'margin_right' => 15,
+            'logo_width' => 55,
+            'logo_height' => 55,
+            'logo_position' => 'center',
+            'stamp_width' => 55,
+            'stamp_height' => 55,
+            'stamp_position' => 'center',
+            'font_size' => 12,
+            'line_height' => 2,
+            'show_header' => true,
+            'show_footer' => true,
+            'show_stamp' => true,
+            'show_signatures' => true,
+            'show_gm_signature' => true,
+            'show_hr_signature' => true,
+            'show_finance_signature' => true,
+            'header_text' => '',
+            'footer_text' => '',
+            'gm_title' => 'المدير العام',
+            'hr_title' => 'مدير الموارد البشرية',
+            'finance_title' => 'المدير المالي',
+        ];
     }
 
     public function updateWhatsAppSettings(Request $request)

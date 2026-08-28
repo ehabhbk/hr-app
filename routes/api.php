@@ -217,6 +217,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/organization', [SettingsController::class, 'organization']);
     Route::put('/organization', [SettingsController::class, 'updateOrganization']);
     Route::post('/organization', [SettingsController::class, 'updateOrganization']);
+    Route::get('/pdf-settings', [SettingsController::class, 'getPdfSettings']);
+    Route::put('/pdf-settings', [SettingsController::class, 'updatePdfSettings']);
+    Route::post('/pdf-settings', [SettingsController::class, 'updatePdfSettings']);
     Route::get('/setting-audits', [SettingsController::class, 'audits']);
     Route::get('/currency', [SettingsController::class, 'getCurrency']);
 

@@ -14,8 +14,6 @@ class LettersController extends Controller
 {
     public function exportPdf(Request $request)
     {
-        require base_path('vendor/tecnickcom/tcpdf/tcpdf.php');
-        
         $type = $request->input('type');
         $employeeId = $request->input('employee_id');
         $params = $request->all();
@@ -24,6 +22,8 @@ class LettersController extends Controller
         
         $org = Setting::where('key', 'organization')->first();
         $orgData = $org ? $org->value : [];
+        $pdfSettings = Setting::where('key', 'pdf_settings')->first();
+        $pdfCfg = $pdfSettings ? $pdfSettings->value : [];
         
         $letterData = [
             'organization' => [
@@ -31,10 +31,14 @@ class LettersController extends Controller
                 'address' => $orgData['address'] ?? '',
                 'phone' => $orgData['phone'] ?? '',
                 'email' => $orgData['email'] ?? '',
-                'logo_url' => isset($orgData['logo']) ? public_path('storage/' . $orgData['logo']) : null,
-                'stamp_url' => isset($orgData['stamp']) ? public_path('storage/' . $orgData['stamp']) : null,
-                'logo_web_url' => isset($orgData['logo']) ? asset('storage/' . $orgData['logo']) : null,
-                'stamp_web_url' => isset($orgData['stamp']) ? asset('storage/' . $orgData['stamp']) : null,
+                'logo_url' => !empty($orgData['logo']) ? public_path('storage/' . $orgData['logo']) : null,
+                'stamp_url' => !empty($orgData['stamp']) ? public_path('storage/' . $orgData['stamp']) : null,
+                'gm_signature_url' => !empty($orgData['gm_signature']) ? public_path('storage/' . $orgData['gm_signature']) : null,
+                'hr_signature_url' => !empty($orgData['hr_signature']) ? public_path('storage/' . $orgData['hr_signature']) : null,
+                'finance_signature_url' => !empty($orgData['finance_signature']) ? public_path('storage/' . $orgData['finance_signature']) : null,
+                'general_manager_name' => $orgData['general_manager_name'] ?? '',
+                'hr_manager_name' => $orgData['hr_manager_name'] ?? '',
+                'finance_manager_name' => $orgData['finance_manager_name'] ?? '',
             ],
             'employee' => [
                 'id' => $employee->id,
@@ -52,6 +56,7 @@ class LettersController extends Controller
             'date' => Carbon::now()->format('Y-m-d'),
             'date_formatted' => Carbon::now()->locale('ar')->translatedFormat('d F Y'),
             'hijri_date' => $this->getHijriDate(),
+            'pdf_settings' => $pdfCfg,
         ];
         
         $content = match($type) {
@@ -69,28 +74,39 @@ class LettersController extends Controller
             default => null,
         };
         
-        $pdf = new \TCPDF('P', 'mm', 'A4', true, 'UTF-8', true);
-        $pdf->SetCreator('Jawda HR');
-        $pdf->SetAuthor($letterData['organization']['name']);
-        $pdf->SetTitle($content['title'] ?? 'خطاب');
-        $pdf->SetSubject($content['subject'] ?? 'خطاب');
-        
-        $pdf->setRTL(true);
-        $pdf->SetFont('aealarabiya', '', 12);
-        $pdf->SetAutoPageBreak(true, 20);
-        
-        $pdf->AddPage();
-        
+        if (!$content) {
+            return response()->json(['error' => 'نوع خطاب غير صالح'], 400);
+        }
+
         $html = $this->generatePdfLetterHtml($letterData, $content, $orgData);
-        $pdf->writeHTML($html, true, false, true, false, 'R');
         
         $typeLabel = $this->getLetterTypeLabel($type);
         $filename = "خطاب_{$typeLabel}_{$employee->name}_" . date('Ymd') . ".pdf";
-        
-        $pdfContent = $pdf->Output($filename, 'S');
+
+        ob_start();
+        $pdf = new \TCPDF('P', 'mm', 'A4', true, 'UTF-8', false);
+        ob_end_clean();
+
+        $pdf->SetCreator('Jawda HR');
+        $pdf->SetAuthor($orgData['name'] ?? 'Jawda HR');
+        $pdf->SetTitle('خطاب ' . $typeLabel);
+        $pdf->SetSubject('خطاب ' . $typeLabel);
+
+        $pdf->setRTL(true);
+        $pdf->SetFont('dejavusans', '', 10);
+        $pdf->SetAutoPageBreak(true, 25);
+
+        $pdf->AddPage();
+
+        ob_start();
+        $pdf->writeHTML($html, true, false, true, false, 'R');
+        ob_end_clean();
+
+        $pdfContent = $pdf->Output('letter.pdf', 'S');
+
         return response($pdfContent, 200)
-            ->header('Content-Type', 'application/octet-stream')
-            ->header('Content-Disposition', 'attachment; filename="' . $filename . '"')
+            ->header('Content-Type', 'application/pdf')
+            ->header('Content-Disposition', 'attachment; filename*=UTF-8\'\'' . rawurlencode($filename))
             ->header('Access-Control-Allow-Origin', '*')
             ->header('Access-Control-Allow-Methods', 'GET, OPTIONS')
             ->header('Access-Control-Allow-Headers', '*');
@@ -98,265 +114,153 @@ class LettersController extends Controller
     
     private function generatePdfLetterHtml($data, $content, $org)
     {
+        $orgD = $data['organization'];
+        $cfg = $data['pdf_settings'] ?? [];
+        
+        $logoSize = (int)($cfg['logo_width'] ?? 55);
+        $stampSize = (int)($cfg['stamp_width'] ?? 55);
+        $fontSize = (int)($cfg['font_size'] ?? 12);
+        $lineH = (int)($cfg['line_height'] ?? 2);
+        $mt = (int)($cfg['margin_top'] ?? 15);
+        $mb = (int)($cfg['margin_bottom'] ?? 15);
+        $ml = (int)($cfg['margin_left'] ?? 15);
+        $mr = (int)($cfg['margin_right'] ?? 15);
+        $showHeader = ($cfg['show_header'] ?? true) !== false;
+        $showFooter = ($cfg['show_footer'] ?? true) !== false;
+        $showStamp = ($cfg['show_stamp'] ?? true) !== false;
+        $showSignatures = ($cfg['show_signatures'] ?? true) !== false;
+        $showGM = ($cfg['show_gm_signature'] ?? true) !== false;
+        $showHR = ($cfg['show_hr_signature'] ?? true) !== false;
+        $showFinance = ($cfg['show_finance_signature'] ?? false) !== false;
+        $gmTitle = $cfg['gm_title'] ?? 'المدير العام';
+        $hrTitle = $cfg['hr_title'] ?? 'مدير الموارد البشرية';
+        $financeTitle = $cfg['finance_title'] ?? 'المدير المالي';
+        $gmName = $orgD['general_manager_name'] ?? '';
+        $hrName = $orgD['hr_manager_name'] ?? '';
+        $financeName = $orgD['finance_manager_name'] ?? '';
+
         $logoHtml = '';
-        if (!empty($data['organization']['logo_url']) && file_exists($data['organization']['logo_url'])) {
-            $logoBase64 = base64_encode(file_get_contents($data['organization']['logo_url']));
-            $logoExt = pathinfo($data['organization']['logo_url'], PATHINFO_EXTENSION);
+        if (!empty($orgD['logo_url']) && file_exists($orgD['logo_url'])) {
+            $logoBase64 = base64_encode(file_get_contents($orgD['logo_url']));
+            $logoExt = pathinfo($orgD['logo_url'], PATHINFO_EXTENSION);
             $logoMime = 'image/' . ($logoExt === 'jpg' ? 'jpeg' : $logoExt);
-            $logoHtml = '<img src="data:' . $logoMime . ';base64,' . $logoBase64 . '" style="height:55px;width:55px;object-fit:contain;">';
-        } elseif (!empty($data['organization']['logo_web_url'])) {
-            $logoHtml = '<img src="' . $data['organization']['logo_web_url'] . '" style="height:55px;width:55px;object-fit:contain;">';
+            $logoHtml = '<img src="data:' . $logoMime . ';base64,' . $logoBase64 . '" style="height:' . $logoSize . 'px;width:' . $logoSize . 'px;object-fit:contain;">';
         }
         
         $stampHtml = '';
-        if (!empty($data['organization']['stamp_url']) && file_exists($data['organization']['stamp_url'])) {
-            $stampBase64 = base64_encode(file_get_contents($data['organization']['stamp_url']));
-            $stampExt = pathinfo($data['organization']['stamp_url'], PATHINFO_EXTENSION);
+        if (!empty($orgD['stamp_url']) && file_exists($orgD['stamp_url'])) {
+            $stampBase64 = base64_encode(file_get_contents($orgD['stamp_url']));
+            $stampExt = pathinfo($orgD['stamp_url'], PATHINFO_EXTENSION);
             $stampMime = 'image/' . ($stampExt === 'jpg' ? 'jpeg' : $stampExt);
-            $stampHtml = '<img src="data:' . $stampMime . ';base64,' . $stampBase64 . '" style="height:55px;width:55px;object-fit:contain;opacity:0.85;">';
-        } elseif (!empty($data['organization']['stamp_web_url'])) {
-            $stampHtml = '<img src="' . $data['organization']['stamp_web_url'] . '" style="height:55px;width:55px;object-fit:contain;opacity:0.85;">';
+            $stampHtml = '<img src="data:' . $stampMime . ';base64,' . $stampBase64 . '" style="height:' . $stampSize . 'px;width:' . $stampSize . 'px;object-fit:contain;opacity:0.85;">';
         }
-        
+
+        function _sigImg($url, $size = 80) {
+            if (!$url || !file_exists($url)) return '';
+            $b64 = base64_encode(file_get_contents($url));
+            $ext = pathinfo($url, PATHINFO_EXTENSION);
+            $mime = 'image/' . ($ext === 'jpg' ? 'jpeg' : $ext);
+            return '<img src="data:' . $mime . ';base64,' . $b64 . '" style="height:' . $size . 'px;object-fit:contain;">';
+        }
+
+        $gmSig = _sigImg($orgD['gm_signature_url'] ?? null);
+        $hrSig = _sigImg($orgD['hr_signature_url'] ?? null);
+        $financeSig = _sigImg($orgD['finance_signature_url'] ?? null);
+
         $body = $content['body'] ?? '';
         $body = str_replace('شركة', 'مؤسسة', $body);
         $body = str_replace('مدير عام الشركة', 'مدير عام المؤسسة', $body);
         
-        // Add stamps to signature sections
-        if (!empty($stampHtml)) {
-            $body = str_replace(
-                "<div class='signature-stamp' data-stamp='hr'></div>",
-                '<div style="margin-top:10px;text-align:center;">' . $stampHtml . '</div>',
-                $body
-            );
-            $body = str_replace(
-                "<div class='signature-stamp' data-stamp='manager'></div>",
-                '<div style="margin-top:10px;text-align:center;">' . $stampHtml . '</div>',
-                $body
-            );
-        } else {
-            $body = str_replace("<div class='signature-stamp' data-stamp='hr'></div>", '<div style="height:65px;display:flex;align-items:center;justify-content:center;"><div style="width:55px;height:55px;border:1.5px dashed #cbd5e1;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:7px;font-weight:bold;">ختم</div></div>', $body);
-            $body = str_replace("<div class='signature-stamp' data-stamp='manager'></div>", '<div style="height:65px;display:flex;align-items:center;justify-content:center;"><div style="width:55px;height:55px;border:1.5px dashed #cbd5e1;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:7px;font-weight:bold;">ختم</div></div>', $body);
+        $logoPlaceholder = '<div style="width:' . $logoSize . 'px;height:' . $logoSize . 'px;background:#f0f4ff;border:1px solid #c7d2fe;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#6366f1;font-size:9px;font-weight:bold;">شعار</div>';
+        $stampPlaceholder = '<div style="width:' . $stampSize . 'px;height:' . $stampSize . 'px;border:1.5px dashed #cbd5e1;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:7px;font-weight:bold;">ختم</div>';
+
+        $headerHtml = '';
+        if ($showHeader) {
+            $headerHtml = '
+            <table style="width:100%;border:none;border-collapse:collapse;margin-bottom:12px;">
+                <tr>
+                    <td style="width:' . ($logoSize + 10) . 'px;text-align:center;vertical-align:middle;">
+                        ' . ($logoHtml ?: $logoPlaceholder) . '
+                    </td>
+                    <td style="text-align:center;padding:5px 10px;vertical-align:middle;">
+                        <h1 style="font-size:18px;font-weight:bold;color:#1e3a5f;margin:0;letter-spacing:0.5px;">' . htmlspecialchars($orgD['name']) . '</h1>
+                        ' . ($orgD['address'] ? '<p style="font-size:9px;color:#64748b;margin:3px 0;">العنوان: ' . htmlspecialchars($orgD['address']) : '') . '
+                        ' . ($orgD['phone'] ? ' | هاتف: ' . htmlspecialchars($orgD['phone']) : '') . '</p>
+                        ' . ($orgD['email'] ? '<p style="font-size:9px;color:#64748b;margin:3px 0;">بريد: ' . htmlspecialchars($orgD['email']) . '</p>' : '') . '
+                    </td>
+                    <td style="width:' . ($logoSize + 10) . 'px;"></td>
+                </tr>
+            </table>
+            <div style="height:3px;background:linear-gradient(90deg, #1e3a5f, #3b82f6, #6366f1, #3b82f6, #1e3a5f);margin:8px 0 15px 0;border-radius:2px;"></div>';
         }
-        
-        $logoPlaceholder = '<div style="width:55px;height:55px;background:#f0f4ff;border:1px solid #c7d2fe;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#6366f1;font-size:9px;font-weight:bold;">شعار</div>';
-        
+
+        $footerHtml = '';
+        if ($showFooter) {
+            $footerHtml = '
+            <div style="height:1.5px;background:linear-gradient(90deg, transparent, #cbd5e1, transparent);margin:20px 0;"></div>
+            <div style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:6px 12px;margin-top:12px;text-align:center;">
+                <p style="font-size:7px;color:#64748b;margin:0;">
+                    <strong>' . htmlspecialchars($orgD['name']) . '</strong> — تاريخ الطباعة: ' . now()->format('Y-m-d H:i') . '
+                </p>
+            </div>';
+        }
+
+        $stampFooter = '';
+        if ($showStamp) {
+            $stampFooter = '<div style="text-align:center;"><div style="margin-top:10px;display:inline-block;">' . ($stampHtml ?: $stampPlaceholder) . '</div><p style="font-size:8px;color:#64748b;margin:4px 0 0 0;">ختم المؤسسة</p></div>';
+        }
+
+        $sigHtml = '';
+        if ($showSignatures) {
+            $sigCells = '';
+            $colWidth = $showFinance ? 30 : 35;
+            
+            if ($showFinance) {
+                $sigCells .= '<td style="width:' . $colWidth . '%;text-align:center;vertical-align:top;padding:8px;">
+                    <div style="min-height:50px;display:flex;align-items:center;justify-content:center;">' . ($financeSig ?: '<div style="border-bottom:1.5px solid #1e3a5f;width:120px;"></div>') . '</div>
+                    <p style="font-size:10px;font-weight:bold;color:#1e3a5f;">' . htmlspecialchars($financeTitle) . '</p>
+                    ' . ($financeName ? '<p style="font-size:8px;color:#333;margin:2px 0;">' . htmlspecialchars($financeName) . '</p>' : '<p style="font-size:7px;color:#94a3b8;margin:2px 0;">الاسم: ........................</p>') . '
+                    <p style="font-size:7px;color:#94a3b8;margin:2px 0;">التوقيع: ....................</p>
+                </td>';
+            }
+
+            $sigCells .= '<td style="width:' . $colWidth . '%;text-align:center;vertical-align:top;padding:8px;">
+                <div style="min-height:50px;display:flex;align-items:center;justify-content:center;">' . ($hrSig ?: '<div style="border-bottom:1.5px solid #1e3a5f;width:120px;"></div>') . '</div>
+                <p style="font-size:10px;font-weight:bold;color:#1e3a5f;">' . htmlspecialchars($hrTitle) . '</p>
+                ' . ($hrName ? '<p style="font-size:8px;color:#333;margin:2px 0;">' . htmlspecialchars($hrName) . '</p>' : '<p style="font-size:7px;color:#94a3b8;margin:2px 0;">الاسم: ........................</p>') . '
+                <p style="font-size:7px;color:#94a3b8;margin:2px 0;">التوقيع: ....................</p>
+            </td>';
+
+            $sigCells .= '<td style="width:' . $colWidth . '%;text-align:center;vertical-align:top;padding:8px;">
+                <div style="min-height:50px;display:flex;align-items:center;justify-content:center;">' . ($gmSig ?: '<div style="border-bottom:1.5px solid #059669;width:120px;"></div>') . '</div>
+                <p style="font-size:10px;font-weight:bold;color:#059669;">' . htmlspecialchars($gmTitle) . '</p>
+                ' . ($gmName ? '<p style="font-size:8px;color:#333;margin:2px 0;">' . htmlspecialchars($gmName) . '</p>' : '<p style="font-size:7px;color:#94a3b8;margin:2px 0;">الاسم: ........................</p>') . '
+                <p style="font-size:7px;color:#94a3b8;margin:2px 0;">التوقيع: ....................</p>
+            </td>';
+
+            $sigHtml = '<table style="width:100%;border:none;border-collapse:collapse;margin-top:20px;">
+                <tr>' . $sigCells . '</tr>
+            </table>';
+        }
+
         $html = '
         <style>
-            body { 
-                font-family: dejavusans, sans-serif; 
-                font-size: 12px; 
-                line-height: 2; 
-                text-align: right;
-                margin: 0;
-                padding: 20px;
-                color: #1e293b;
-            }
-            .org-header-table { 
-                width: 100%;
-                border: none;
-                border-collapse: collapse;
-                margin-bottom: 12px;
-            }
-            .org-header-table td {
-                border: none;
-                vertical-align: middle;
-                padding: 5px;
-            }
-            .header-gradient {
-                height: 3px;
-                background: linear-gradient(90deg, #1e3a5f, #3b82f6, #6366f1, #3b82f6, #1e3a5f);
-                margin: 8px 0 15px 0;
-                border-radius: 2px;
-            }
-            .org-name { 
-                font-size: 18px; 
-                font-weight: bold; 
-                color: #1e3a5f;
-                margin: 0;
-                letter-spacing: 0.5px;
-            }
-            .org-subtitle {
-                font-size: 9px;
-                color: #64748b;
-                margin: 3px 0;
-            }
-            .letter-title {
-                text-align: center;
-                margin: 20px 0;
-                padding: 15px;
-                border: 3px solid #1e3a5f;
-                background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
-                border-radius: 10px;
-            }
-            .letter-title h2 {
-                font-size: 18px;
-                margin: 0;
-                color: #1e3a5f;
-            }
-            .recipient-info { 
-                margin: 15px 0; 
-                padding: 12px;
-                background: #f8fafc;
-                border: 1px solid #e2e8f0;
-                border-radius: 8px;
-            }
-            .subject-box { 
-                margin: 15px 0; 
-                padding: 10px 15px; 
-                background: #fef3c7;
-                border-right: 4px solid #d97706;
-                border-radius: 4px;
-            }
-            .subject-box strong { color: #92400e; }
-            .content-body { 
-                text-align: justify; 
-                margin: 20px 0; 
-                line-height: 2;
-            }
-            .signature-section { 
-                margin-top: 40px; 
-            }
-            .signature-box { 
-                text-align: center; 
-                width: 48%; 
-                display: inline-block;
-                padding: 10px;
-            }
-            .signature-left { float: right; }
-            .signature-right { float: left; }
-            .signature-title {
-                font-weight: bold;
-                font-size: 12px;
-                margin-bottom: 8px;
-                color: #1e3a5f;
-            }
-            .signature-line {
-                border-bottom: 1.5px solid #1e3a5f;
-                width: 120px;
-                margin: 0 auto 5px auto;
-            }
-            .stamp-area {
-                margin-top: 8px;
-                min-height: 65px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-            }
-            .border-box { 
-                border: 2px solid #cbd5e1; 
-                padding: 15px; 
-                margin: 15px 0; 
-                border-radius: 8px;
-            }
-            .clear { clear: both; }
-            .text-center { text-align: center; }
-            .text-right { text-align: right; }
-            .text-lg { font-size: 13px; }
-            .text-xl { font-size: 15px; }
-            .text-2xl { font-size: 18px; }
-            .text-3xl { font-size: 22px; }
-            .font-bold { font-weight: bold; }
-            .mb-4 { margin-bottom: 10px; }
-            .mb-6 { margin-bottom: 15px; }
-            .mb-8 { margin-bottom: 20px; }
-            .mt-2 { margin-top: 5px; }
-            .mt-8 { margin-top: 20px; }
-            .p-6 { padding: 15px; }
-            .my-4 { margin-top: 10px; margin-bottom: 10px; }
-            .mr-8 { margin-right: 20px; }
-            .border-2 { border-width: 2px; }
-            .border-black { border-color: #1e293b; }
-            .w-full { width: 100%; }
-            .bg-gray-50 { background: #f8fafc; }
-            ul, ol { margin: 10px 0; }
-            li { margin: 5px 0; line-height: 1.8; }
-            p { margin: 8px 0; }
-            .salutation { margin: 10px 0; }
-            .content { margin: 15px 0; line-height: 2; }
-            .closing { margin: 15px 0; }
-            .signature { margin-top: 30px; }
-            table.w-full { border-collapse: collapse; width: 100%; }
-            table.w-full td { padding: 8px; }
-            .border { border: 1px solid #e2e8f0; }
-            .p-2 { padding: 8px; }
-            .p-3 { padding: 10px; }
-            .p-4 { padding: 12px; }
-            .flex { display: flex; }
-            .justify-between { justify-content: space-between; }
-            .footer-divider {
-                height: 1.5px;
-                background: linear-gradient(90deg, transparent, #cbd5e1, transparent);
-                margin: 20px 0;
-            }
-            .footer-info {
-                background: #f1f5f9;
-                border: 1px solid #e2e8f0;
-                border-radius: 6px;
-                padding: 6px 12px;
-                margin-top: 12px;
-                text-align: center;
-            }
-            .letter-header p { margin: 3px 0; }
-            hr { border: none; border-top: 1px solid #e2e8f0; }
+            @page { margin: ' . $mt . 'mm ' . $mr . 'mm ' . $mb . 'mm ' . $ml . 'mm; }
+            body { font-family: Amiri, dejavusans, sans-serif; font-size: ' . $fontSize . 'px; line-height: ' . $lineH . '; text-align: right; direction: rtl; color: #1e293b; margin: 0; padding: 0; }
+            * { box-sizing: border-box; }
         </style>
         
-        <table class="org-header-table">
-            <tr>
-                <td style="width:65px;text-align:center;">
-                    ' . ($logoHtml ?: $logoPlaceholder) . '
-                </td>
-                <td style="text-align:center;padding:5px 10px;">
-                    <h1 class="org-name">' . htmlspecialchars($data['organization']['name']) . '</h1>
-                    <p class="org-subtitle">
-                        ' . ($data['organization']['address'] ? 'العنوان: ' . htmlspecialchars($data['organization']['address']) : '') . '
-                        ' . ($data['organization']['phone'] ? ' | هاتف: ' . htmlspecialchars($data['organization']['phone']) : '') . '
-                    </p>
-                    ' . ($data['organization']['email'] ? '<p class="org-subtitle">بريد: ' . htmlspecialchars($data['organization']['email']) . '</p>' : '') . '
-                </td>
-                <td style="width:65px;"></td>
-            </tr>
-        </table>
-        <div class="header-gradient"></div>
+        ' . $headerHtml . '
         
-        <div class="letter-title">
-            <h2>' . htmlspecialchars($content['title'] ?? 'خطاب') . '</h2>
+        <div style="text-align:center;margin:20px 0;padding:15px;border:3px solid #1e3a5f;background:linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);border-radius:10px;">
+            <h2 style="font-size:18px;margin:0;color:#1e3a5f;">' . htmlspecialchars($content['title'] ?? 'خطاب') . '</h2>
         </div>
         
         ' . $body . '
         
-        <div class="footer-divider"></div>
-        
-        <table style="width:100%;border:none;margin-top:20px;border-collapse:collapse;">
-            <tr>
-                <td style="width:30%;text-align:center;border:none;vertical-align:top;padding:5px;">
-                    <div class="stamp-area">' . ($stampHtml ?: '<div style="width:55px;height:55px;border:1.5px dashed #cbd5e1;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:7px;font-weight:bold;">ختم</div>') . '</div>
-                    <p style="font-size:8px;color:#64748b;margin:4px 0 0 0;">ختم المؤسسة</p>
-                </td>
-                <td style="width:35%;text-align:center;border:none;vertical-align:top;padding:5px;">
-                    <div class="signature-line" style="border-bottom:1.5px solid #1e3a5f;width:120px;"></div>
-                    <p class="signature-title" style="font-size:10px;">مدير الموارد البشرية</p>
-                    <p style="font-size:7px;color:#94a3b8;margin:2px 0;">الاسم: ........................</p>
-                    <p style="font-size:7px;color:#94a3b8;margin:2px 0;">التوقيع: ....................</p>
-                    <p style="font-size:7px;color:#94a3b8;margin:2px 0;">التاريخ: ....................</p>
-                </td>
-                <td style="width:35%;text-align:center;border:none;vertical-align:top;padding:5px;">
-                    <div class="signature-line" style="border-bottom:1.5px solid #059669;width:120px;"></div>
-                    <p class="signature-title" style="font-size:10px;color:#059669;">المدير العام</p>
-                    <p style="font-size:7px;color:#94a3b8;margin:2px 0;">الاسم: ........................</p>
-                    <p style="font-size:7px;color:#94a3b8;margin:2px 0;">التوقيع: ....................</p>
-                    <p style="font-size:7px;color:#94a3b8;margin:2px 0;">التاريخ: ....................</p>
-                </td>
-            </tr>
-        </table>
-        
-        <div class="footer-info">
-            <p style="font-size:7px;color:#64748b;margin:0;">
-                <strong>Jawda HR</strong> — نظام إدارة الموارد البشرية | تاريخ الطباعة: ' . now()->format('Y-m-d H:i') . '
-            </p>
-        </div>
-        
-        <div class="clear"></div>
+        ' . $stampFooter . '
+        ' . $sigHtml . '
+        ' . $footerHtml . '
         ';
         
         return $html;

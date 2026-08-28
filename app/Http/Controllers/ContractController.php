@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Models\Employee;
 use App\Models\Setting;
-use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 
 class ContractController extends Controller
@@ -53,8 +52,36 @@ class ContractController extends Controller
             'stampBase64' => $stampBase64,
         ];
 
-        $pdf = Pdf::loadView('contracts.employment', $data);
+        $html = view('contracts.employment', $data)->render();
 
-        return $pdf->download("contract_{$employee->name}_{$data['date']}.pdf");
+        ob_start();
+        $pdf = new \TCPDF('P', 'mm', 'A4', true, 'UTF-8', false);
+        ob_end_clean();
+
+        $pdf->SetCreator('Jawda HR');
+        $pdf->SetAuthor($orgName);
+        $pdf->SetTitle('عقد عمل');
+        $pdf->SetSubject('عقد عمل');
+
+        $pdf->setRTL(true);
+        $pdf->SetFont('dejavusans', '', 10);
+        $pdf->SetAutoPageBreak(true, 25);
+
+        $pdf->AddPage();
+
+        ob_start();
+        $pdf->writeHTML($html, true, false, true, false, 'R');
+        ob_end_clean();
+
+        $pdfContent = $pdf->Output('contract.pdf', 'S');
+
+        $filename = "contract_{$employee->name}_{$data['date']}.pdf";
+
+        return response($pdfContent, 200)
+            ->header('Content-Type', 'application/pdf')
+            ->header('Content-Disposition', 'attachment; filename*=UTF-8\'\'' . rawurlencode($filename))
+            ->header('Access-Control-Allow-Origin', '*')
+            ->header('Access-Control-Allow-Methods', 'GET, OPTIONS')
+            ->header('Access-Control-Allow-Headers', '*');
     }
 }

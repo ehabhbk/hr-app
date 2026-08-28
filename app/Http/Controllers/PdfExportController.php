@@ -772,7 +772,7 @@ class PdfExportController extends Controller
     {
         return '
         <style>
-            body { font-family: dejavusans, sans-serif; direction: rtl; color: #1e293b; }
+            body { font-family: Amiri, dejavusans, sans-serif; direction: rtl; color: #1e293b; }
             table { width: 100%; border-collapse: collapse; font-size: 9px; }
             th, td { border: 1px solid #cbd5e1; padding: 5px 6px; text-align: center; }
             th { color: #ffffff; font-weight: bold; background: #1e3a5f; font-size: 9px; }
@@ -1466,7 +1466,7 @@ class PdfExportController extends Controller
         
         $html = $styles . '
         <style>
-            body { font-family: dejavusans, sans-serif; line-height: 2; }
+            body { font-family: Amiri, dejavusans, sans-serif; line-height: 2; }
             .letter-box { background: #fff; padding: 20px 30px; margin: 15px 0; }
             .letter-title { font-size: 20px; font-weight: bold; margin: 25px 0; text-align: center; color: #1e3a5f; }
             .content-body { text-align: justify; margin: 30px 0; font-size: 12px; line-height: 2; }

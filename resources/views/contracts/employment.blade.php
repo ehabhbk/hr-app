@@ -5,13 +5,13 @@
     <title>عقد عمل توظيفي</title>
     <style>
         @font-face {
-            font-family: 'aealarabiya';
+            font-family: 'Amiri', 'aealarabiya';
             src: url('{{ base_path('vendor/tecnickcom/tcpdf/fonts/aealarabiya.ttf') }}');
             font-weight: normal;
             font-style: normal;
         }
         * {
-            font-family: 'aealarabiya', 'Tahoma', 'Arial', sans-serif;
+            font-family: 'Amiri', 'aealarabiya', 'Tahoma', 'Arial', sans-serif;
         }
         body {
             font-size: 11pt;
