@@ -154,7 +154,7 @@ class SettlementController extends Controller
         $pdf->AddPage();
         
         $html = $this->generateSettlementPdfHtml($org, $settlement, $employee);
-        $pdf->writeHTML($html, true, false, true, false, 'R');
+        $pdf->writeHTML(\App\Services\ArabicPdfService::fixAllah($html), true, false, true, false, 'R');
         
         $pdfContent = $pdf->Output('settlement_' . $employee->name . '.pdf', 'S');
         return response($pdfContent, 200)

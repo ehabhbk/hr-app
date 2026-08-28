@@ -358,7 +358,7 @@ class PdfExportController extends Controller
             
             $html = $this->generateDetailedSalaryReportHtml($org, $salaryData, $monthName, $year, $currencySymbol);
             ob_start();
-            $pdf->writeHTML($html, true, false, true, false, 'R');
+            $pdf->writeHTML(\App\Services\ArabicPdfService::fixAllah($html), true, false, true, false, 'R');
             ob_end_clean();
             
             $pdfContent = $pdf->Output('salary_report.pdf', 'S');
@@ -433,7 +433,7 @@ class PdfExportController extends Controller
             
             $html = $this->generateIncomeTaxReportHtml($org, $taxData, $year);
             ob_start();
-            $pdf->writeHTML($html, true, false, true, false, 'R');
+            $pdf->writeHTML(\App\Services\ArabicPdfService::fixAllah($html), true, false, true, false, 'R');
             ob_end_clean();
             
             $pdfContent = $pdf->Output('income_tax_report.pdf', 'S');
@@ -493,7 +493,7 @@ class PdfExportController extends Controller
             $pdf->AddPage();
             
             $html = $this->generateLeaveWarningReportHtml($org, $reportData, $year);
-            $pdf->writeHTML($html, true, false, true, false, 'R');
+            $pdf->writeHTML(\App\Services\ArabicPdfService::fixAllah($html), true, false, true, false, 'R');
             
             $pdfContent = $pdf->Output('leave_warning_report.pdf', 'S');
             return response($pdfContent, 200)
@@ -536,7 +536,7 @@ class PdfExportController extends Controller
             $pdf->AddPage();
             
             $html = $this->generateLetterHtml($org, $employee, $content);
-            $pdf->writeHTML($html, true, false, true, false, 'R');
+            $pdf->writeHTML(\App\Services\ArabicPdfService::fixAllah($html), true, false, true, false, 'R');
             
             $pdfContent = $pdf->Output('letter.pdf', 'S');
             return response($pdfContent, 200)
@@ -586,7 +586,7 @@ class PdfExportController extends Controller
             $pdf->AddPage();
             
             $html = $this->generateDepartmentReportHtml($org, $reportData, $year);
-            $pdf->writeHTML($html, true, false, true, false, 'R');
+            $pdf->writeHTML(\App\Services\ArabicPdfService::fixAllah($html), true, false, true, false, 'R');
             
             $pdfContent = $pdf->Output('department_report.pdf', 'S');
             return response($pdfContent, 200)
@@ -646,7 +646,7 @@ class PdfExportController extends Controller
             $pdf->AddPage();
             
             $html = $this->generateSalaryIncreaseReportHtml($org, $reportData, $year);
-            $pdf->writeHTML($html, true, false, true, false, 'R');
+            $pdf->writeHTML(\App\Services\ArabicPdfService::fixAllah($html), true, false, true, false, 'R');
             
             $pdfContent = $pdf->Output('salary_increase_report.pdf', 'S');
             return response($pdfContent, 200)
@@ -705,7 +705,7 @@ class PdfExportController extends Controller
         $pdf->AddPage();
         
         $html = $this->generateSalaryIncreaseReportHtml($org, $reportData, $year);
-        $pdf->writeHTML($html, true, false, true, false, 'R');
+        $pdf->writeHTML(\App\Services\ArabicPdfService::fixAllah($html), true, false, true, false, 'R');
         
         $pdfContent = $pdf->Output('salary_increase_report.pdf', 'S');
         return response($pdfContent, 200)
@@ -752,7 +752,7 @@ class PdfExportController extends Controller
             $pages = explode('<pagebreak>', $html);
             foreach ($pages as $pageContent) {
                 $pdf->AddPage();
-                $pdf->writeHTML($pageContent, true, false, true, false, 'R');
+                $pdf->writeHTML(\App\Services\ArabicPdfService::fixAllah($pageContent), true, false, true, false, 'R');
             }
             
             $pdfContent = $pdf->Output('employee_report_' . $employee->name . '.pdf', 'S');

@@ -99,7 +99,7 @@ class LettersController extends Controller
         $pdf->AddPage();
 
         ob_start();
-        $pdf->writeHTML($html, true, false, true, false, 'R');
+        $pdf->writeHTML(\App\Services\ArabicPdfService::fixAllah($html), true, false, true, false, 'R');
         ob_end_clean();
 
         $pdfContent = $pdf->Output('letter.pdf', 'S');
