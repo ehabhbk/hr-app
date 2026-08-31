@@ -730,7 +730,17 @@ class AttendanceRecordController extends Controller
             // Group by date
             $logsByDate = $employeeLogs->groupBy(fn($log) => Carbon::parse($log->timestamp)->setTimezone($tz)->format('Y-m-d'));
             
-            $openCheckInRecord = null;
+            // Carry over the employee's most recent open session from the database.
+            // Because the scheduler processes day-by-day (from_date = to_date = today),
+            // a fresh run has no in-memory memory of an open check-in, so a punch that
+            // follows an open check-in (e.g. attended 9 PM today and punched out 8 AM
+            // tomorrow, or checked in at 8 AM and punched out at 4 PM) would otherwise
+            // wrongly become another check-in instead of a check-out.
+            $openCheckInRecord = AttendanceRecord::where('employee_id', $employee->id)
+                ->whereNull('check_out_time')
+                ->where('date', '<=', $fromDate)
+                ->orderBy('date', 'desc')
+                ->first();
             
             $dates = array_keys($logsByDate->toArray());
             sort($dates);
