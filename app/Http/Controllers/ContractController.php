@@ -58,7 +58,7 @@ class ContractController extends Controller
         $pdf = new \TCPDF('P', 'mm', 'A4', true, 'UTF-8', false);
         ob_end_clean();
 
-        $pdf->SetCreator('Jawda HR');
+        $pdf->SetCreator('ITQAN HR');
         $pdf->SetAuthor($orgName);
         $pdf->SetTitle('عقد عمل');
         $pdf->SetSubject('عقد عمل');

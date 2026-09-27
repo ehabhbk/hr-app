@@ -27,7 +27,7 @@ class LettersController extends Controller
         
         $letterData = [
             'organization' => [
-                'name' => $orgData['name'] ?? 'مؤسسة Jawda HR',
+                'name' => $orgData['name'] ?? 'مؤسسة ITQAN HR',
                 'address' => $orgData['address'] ?? '',
                 'phone' => $orgData['phone'] ?? '',
                 'email' => $orgData['email'] ?? '',
@@ -87,8 +87,8 @@ class LettersController extends Controller
         $pdf = new \TCPDF('P', 'mm', 'A4', true, 'UTF-8', false);
         ob_end_clean();
 
-        $pdf->SetCreator('Jawda HR');
-        $pdf->SetAuthor($orgData['name'] ?? 'Jawda HR');
+        $pdf->SetCreator('ITQAN HR');
+        $pdf->SetAuthor($orgData['name'] ?? 'ITQAN HR');
         $pdf->SetTitle('خطاب ' . $typeLabel);
         $pdf->SetSubject('خطاب ' . $typeLabel);
 
@@ -279,7 +279,7 @@ class LettersController extends Controller
         
         $letterData = [
             'organization' => [
-                'name' => $orgData['name'] ?? 'مؤسسة Jawda HR',
+                'name' => $orgData['name'] ?? 'مؤسسة ITQAN HR',
                 'address' => $orgData['address'] ?? '',
                 'phone' => $orgData['phone'] ?? '',
                 'email' => $orgData['email'] ?? '',

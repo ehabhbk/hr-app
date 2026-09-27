@@ -16,7 +16,7 @@ trait PdfHelpersTrait
     {
         $org = Setting::where('key', 'organization')->first();
         return $org ? $org->value : [
-            'name' => 'Jawda HR',
+            'name' => 'ITQAN HR',
             'address' => '',
             'phone' => '',
             'email' => '',
@@ -65,7 +65,7 @@ trait PdfHelpersTrait
     protected function getOfficialHeaderHtml($org)
     {
         $logoHtml = $this->getLogoHtml($org, 55);
-        $orgName = htmlspecialchars($org['name'] ?? 'Jawda HR');
+        $orgName = htmlspecialchars($org['name'] ?? 'ITQAN HR');
         $orgAddress = htmlspecialchars($org['address'] ?? '');
         $orgPhone = htmlspecialchars($org['phone'] ?? '');
         $orgEmail = htmlspecialchars($org['email'] ?? '');
@@ -147,7 +147,7 @@ trait PdfHelpersTrait
             </table>
             <div style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:6px 12px;margin-top:12px;text-align:center;">
                 <p style="font-size:7px;color:#64748b;margin:0;">
-                    <strong>Jawda HR</strong> — نظام إدارة الموارد البشرية | تاريخ الطباعة: ' . now()->format('Y-m-d H:i') . '
+                    <strong>ITQAN HR</strong> — نظام إدارة الموارد البشرية | تاريخ الطباعة: ' . now()->format('Y-m-d H:i') . '
                 </p>
             </div>
         </div>';
@@ -345,8 +345,8 @@ class PdfExportController extends Controller
             $pdf = new \TCPDF('L', 'mm', 'A4', true, 'UTF-8', false);
             ob_end_clean();
             
-            $pdf->SetCreator('Jawda HR');
-            $pdf->SetAuthor($org['name'] ?? 'Jawda HR');
+            $pdf->SetCreator('ITQAN HR');
+            $pdf->SetAuthor($org['name'] ?? 'ITQAN HR');
             $pdf->SetTitle('كشف المرتبات');
             $pdf->SetSubject('كشف المرتبات الشهري');
             
@@ -418,8 +418,8 @@ class PdfExportController extends Controller
             $pdf = new \TCPDF('P', 'mm', 'A4', true, 'UTF-8', false);
             ob_end_clean();
 
-            $pdf->SetCreator('Jawda HR');
-            $pdf->SetAuthor($org['name'] ?? 'Jawda HR');
+            $pdf->SetCreator('ITQAN HR');
+            $pdf->SetAuthor($org['name'] ?? 'ITQAN HR');
             $pdf->SetTitle('تقرير ضريبة الدخل');
             $pdf->SetSubject('تقرير ضريبة الدخل السنوي');
             
@@ -481,8 +481,8 @@ class PdfExportController extends Controller
             $pdf = new \TCPDF('P', 'mm', 'A4', true, 'UTF-8', false);
             ob_end_clean();
             
-            $pdf->SetCreator('Jawda HR');
-            $pdf->SetAuthor($org['name'] ?? 'Jawda HR');
+            $pdf->SetCreator('ITQAN HR');
+            $pdf->SetAuthor($org['name'] ?? 'ITQAN HR');
             $pdf->SetTitle('Leave and Warning Report');
             $pdf->SetSubject('Annual Leave and Warning Report');
             
@@ -525,8 +525,8 @@ class PdfExportController extends Controller
             $pdf = new \TCPDF('P', 'mm', 'A4', true, 'UTF-8', false);
             ob_end_clean();
             
-            $pdf->SetCreator('Jawda HR');
-            $pdf->SetAuthor($org['name'] ?? 'Jawda HR');
+            $pdf->SetCreator('ITQAN HR');
+            $pdf->SetAuthor($org['name'] ?? 'ITQAN HR');
             $pdf->SetTitle($content['title']);
             
             $pdf->setRTL(true);
@@ -575,8 +575,8 @@ class PdfExportController extends Controller
             $pdf = new \TCPDF('P', 'mm', 'A4', true, 'UTF-8', false);
             ob_end_clean();
             
-            $pdf->SetCreator('Jawda HR');
-            $pdf->SetAuthor($org['name'] ?? 'Jawda HR');
+            $pdf->SetCreator('ITQAN HR');
+            $pdf->SetAuthor($org['name'] ?? 'ITQAN HR');
             $pdf->SetTitle('تقرير الأقسام');
             
             $pdf->setRTL(true);
@@ -635,8 +635,8 @@ class PdfExportController extends Controller
             $pdf = new \TCPDF('P', 'mm', 'A4', true, 'UTF-8', false);
             ob_end_clean();
             
-            $pdf->SetCreator('Jawda HR');
-            $pdf->SetAuthor($org['name'] ?? 'Jawda HR');
+            $pdf->SetCreator('ITQAN HR');
+            $pdf->SetAuthor($org['name'] ?? 'ITQAN HR');
             $pdf->SetTitle('Salary Increase Report');
             
             $pdf->setRTL(true);
@@ -694,8 +694,8 @@ class PdfExportController extends Controller
         $pdf = new \TCPDF('P', 'mm', 'A4', true, 'UTF-8', false);
         ob_end_clean();
         
-        $pdf->SetCreator('Jawda HR');
-        $pdf->SetAuthor($org['name'] ?? 'Jawda HR');
+        $pdf->SetCreator('ITQAN HR');
+        $pdf->SetAuthor($org['name'] ?? 'ITQAN HR');
         $pdf->SetTitle('Salary Increase Report');
         
         $pdf->setRTL(true);
@@ -738,8 +738,8 @@ class PdfExportController extends Controller
             $pdf = new \TCPDF('P', 'mm', 'A4', true, 'UTF-8', false);
             ob_end_clean();
             
-            $pdf->SetCreator('Jawda HR');
-            $pdf->SetAuthor($org['name'] ?? 'Jawda HR');
+            $pdf->SetCreator('ITQAN HR');
+            $pdf->SetAuthor($org['name'] ?? 'ITQAN HR');
             $pdf->SetTitle('Employee Report - ' . $employee->name);
             $pdf->SetSubject('Employee Detailed Report');
             
@@ -1089,7 +1089,7 @@ class PdfExportController extends Controller
         
         <div style="margin:30px 0;padding:20px;background:#f0f9ff;border:2px solid #0ea5e9;border-radius:10px;">
             <h3 style="text-align:center;color:#0369a1;margin:0 0 15px 0;">اعتماد التقرير</h3>
-            <p style="text-align:center;color:#64748b;margin:0 0 20px 0;">تم إصدار هذا التقرير من نظام Jawda HR لإدارة الموارد البشرية</p>
+            <p style="text-align:center;color:#64748b;margin:0 0 20px 0;">تم إصدار هذا التقرير من نظام ITQAN HR لإدارة الموارد البشرية</p>
         </div>';
         
         $html .= $this->getOfficialFooterHtml($org);
@@ -1428,21 +1428,21 @@ class PdfExportController extends Controller
                 
             case 'good_conduct':
                 $body = '
-                    <p style="text-align:justify;line-height:2;">تشهد مؤسسة <strong>' . htmlspecialchars($org['name'] ?? 'Jawda HR') . '</strong> بأن الموظف/ة <strong>' . htmlspecialchars($employee->name) . '</strong> كان/تعمل لديها خلال الفترة من <strong>' . htmlspecialchars($employee->hire_date ?? '-') . '</strong> وحتى تاريخه.</p>
+                    <p style="text-align:justify;line-height:2;">تشهد مؤسسة <strong>' . htmlspecialchars($org['name'] ?? 'ITQAN HR') . '</strong> بأن الموظف/ة <strong>' . htmlspecialchars($employee->name) . '</strong> كان/تعمل لديها خلال الفترة من <strong>' . htmlspecialchars($employee->hire_date ?? '-') . '</strong> وحتى تاريخه.</p>
                     <p style="text-align:justify;line-height:2;">وخلال فترة عمله/عملها، فقد شهدنا عليه/عليها بحسن السير والسلوك، والأداء المهني المتميز، والتزامه/التزامها بكافة السياسات والأنظمة المتبعة في المؤسسة.</p>
                 ';
                 break;
                 
             case 'salary_verification':
                 $body = '
-                    <p style="text-align:justify;line-height:2;">تشهد مؤسسة <strong>' . htmlspecialchars($org['name'] ?? 'Jawda HR') . '</strong> بأن الموظف/ة <strong>' . htmlspecialchars($employee->name) . '</strong> يتقاض/تتقاضى راتباً شهرياً قدره <strong>' . number_format($employee->base_salary ?? 0, 2) . ' ' . ($org['currency_symbol'] ?? 'جنيه سوداني') . '</strong>.</p>
+                    <p style="text-align:justify;line-height:2;">تشهد مؤسسة <strong>' . htmlspecialchars($org['name'] ?? 'ITQAN HR') . '</strong> بأن الموظف/ة <strong>' . htmlspecialchars($employee->name) . '</strong> يتقاض/تتقاضى راتباً شهرياً قدره <strong>' . number_format($employee->base_salary ?? 0, 2) . ' ' . ($org['currency_symbol'] ?? 'جنيه سوداني') . '</strong>.</p>
                     <p style="text-align:justify;line-height:2;">وذلك وفقاً للراتب المسجل في سجلات المؤسسة.</p>
                 ';
                 break;
                 
             case 'experience':
                 $body = '
-                    <p style="text-align:justify;line-height:2;">تشهد مؤسسة <strong>' . htmlspecialchars($org['name'] ?? 'Jawda HR') . '</strong> بأن الموظف/ة <strong>' . htmlspecialchars($employee->name) . '</strong> قد عمل/ت لديها في قسم <strong>' . htmlspecialchars($employee->department?->name ?? '-') . '</strong> بمهنة <strong>' . htmlspecialchars($employee->position ?? '-') . '</strong> خلال الفترة من <strong>' . htmlspecialchars($employee->hire_date ?? '-') . '</strong>.</p>
+                    <p style="text-align:justify;line-height:2;">تشهد مؤسسة <strong>' . htmlspecialchars($org['name'] ?? 'ITQAN HR') . '</strong> بأن الموظف/ة <strong>' . htmlspecialchars($employee->name) . '</strong> قد عمل/ت لديها في قسم <strong>' . htmlspecialchars($employee->department?->name ?? '-') . '</strong> بمهنة <strong>' . htmlspecialchars($employee->position ?? '-') . '</strong> خلال الفترة من <strong>' . htmlspecialchars($employee->hire_date ?? '-') . '</strong>.</p>
                     <p style="text-align:justify;line-height:2;">وخلال فترة عمله/عملها، اكتسب/ت خبرات ومهارات متميزة في مجال عملها، وحاز/حازت على ثقة الإدارة والزملاء.</p>
                 ';
                 break;
