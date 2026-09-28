@@ -173,10 +173,10 @@ class AdvancesController extends Controller
         }
 
         // Set installments
-        $installments = $data['installments'] ?? 1;
+        $installments = (int) ($data['installments'] ?? 1);
         if ($type === 'long') {
-            $minInstallments = $longSettings['min_installments'] ?? 3;
-            $maxInstallments = $longSettings['max_installments'] ?? 12;
+            $minInstallments = (int) ($longSettings['min_installments'] ?? 3);
+            $maxInstallments = (int) ($longSettings['max_installments'] ?? 12);
             $installments = max($minInstallments, min($installments, $maxInstallments));
         }
 

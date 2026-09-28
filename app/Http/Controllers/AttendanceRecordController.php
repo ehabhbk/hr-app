@@ -1059,7 +1059,7 @@ class AttendanceRecordController extends Controller
                 $orgData = json_decode($orgSetting->value, true) ?? [];
             }
         }
-        $orgName = $orgData['name'] ?? 'مؤسسة Jawda HR';
+        $orgName = $orgData['name'] ?? 'مؤسسة ITQAN HR';
         $html .= '<h1>' . $orgName . '</h1>';
         $html .= '<h2>تقرير سجلات الحضور والانصراف</h2>';
         $employeeLabel = '';

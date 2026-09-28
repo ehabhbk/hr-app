@@ -249,7 +249,10 @@ class PdfExportController extends Controller
                 'incentives',
                 'deductions',
                 'advances' => function($q) {
-                    $q->where('status', 'approved')->where('remaining_amount', '>', 0);
+                    $q->where('status', 'approved')
+                      ->where(function($sub) {
+                          $sub->where('remaining_amount', '>', 0)->orWhereNotNull('installments_detail');
+                      });
                 },
                 'attendanceRecords' => function($q) use ($month, $year) {
                     $q->whereMonth('date', $month)->whereYear('date', $year);
@@ -304,21 +307,13 @@ class PdfExportController extends Controller
                     }
                 }
                 
-                $totalAdvanceDeduction = 0;
-                foreach ($emp->advances as $advance) {
-                    if ($advance->remaining_amount <= 0) continue;
-                    $remainingAmount = (float) $advance->remaining_amount;
-                    $monthlyInstallment = (float) ($advance->monthly_installment ?? 0);
-                    $isLongTerm = isset($advance->advance_type) && $advance->advance_type === 'long_term';
-                    if (!isset($advance->advance_type)) {
-                        $isLongTerm = ($advance->installment_count ?? 1) > 1;
-                    }
-                    if ($isLongTerm) {
-                        $totalAdvanceDeduction += min($monthlyInstallment, $remainingAmount);
-                    } else {
-                        $totalAdvanceDeduction += $remainingAmount;
-                    }
-                }
+                $totalAdvanceDeduction = ReportsController::computeAdvanceDeductions(
+                    $emp->advances ?? collect(),
+                    (int) $month,
+                    (int) $year,
+                    (float) $grossSalary,
+                    (Setting::where('key', 'advances')->first()?->value ?? [])
+                )['planned'];
                 
                 $totalAllDeductions = $insuranceAmount + $otherDeductions + $attendanceDeductions + $totalAdvanceDeduction;
                 $netSalary = $grossSalary - $totalAllDeductions;

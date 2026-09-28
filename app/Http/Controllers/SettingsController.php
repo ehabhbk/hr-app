@@ -284,7 +284,7 @@ class SettingsController extends Controller
     {
         try {
             $phone = $request->input('phone');
-            $message = $request->input('message', 'اختبار من نظام Jawda HR');
+            $message = $request->input('message', 'اختبار من نظام ITQAN HR');
 
             $whatsapp = new \App\Services\WhatsAppService();
             $result = $whatsapp->sendMessage($phone, $message);

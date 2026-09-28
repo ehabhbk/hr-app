@@ -111,61 +111,14 @@ class ReportsController extends Controller
             // Get deductions (for current month only — filtered by eager loading)
             $otherDeductions = (float) $emp->deductions->sum('amount');
             
-            // Get advance settings for deduction percentages
+            // Get advance settings
             $advanceSettings = Setting::where('key', 'advances')->first();
             $advanceConfig = $advanceSettings ? $advanceSettings->value : [];
-            $shortAdvanceConfig = $advanceConfig['short_advance'] ?? [];
-            $longAdvanceConfig = $advanceConfig['long_advance'] ?? [];
             
-            // Short advance deduction percentage (from settings)
-            $shortDeductionPercent = (float) ($shortAdvanceConfig['deduction_percent'] ?? 100) / 100;
-            // Short advance max percentage of gross salary (from settings)
-            $shortMaxPercent = (float) ($shortAdvanceConfig['max_percent'] ?? 50) / 100;
-            
-            // Calculate advance deductions based on type
-            // - short: deduct based on deduction_percent of gross salary, max is max_percent of gross
-            // - long: deduct monthly installment from the advance
-            $totalAdvanceDeduction = 0;
-            $totalCarriedDeduction = 0;
-            $advancesList = [];
-            
-            foreach ($emp->advances as $advance) {
-                if (($advance->remaining_amount ?? 0) <= 0) continue;
-                if ($advance->status !== 'approved') continue;
-                
-                $remainingAmount = (float) ($advance->remaining_amount ?? 0);
-                $monthlyInstallment = (float) ($advance->monthly_installment ?? 0);
-                $isLongTerm = $advance->type === 'long';
-                
-                $deductAmount = 0;
-                
-                if ($isLongTerm) {
-                    $deductAmount = min($monthlyInstallment > 0 ? $monthlyInstallment : $remainingAmount, $remainingAmount);
-                } else {
-                    // Short term advance: deduct based on deduction_percent of gross salary
-                    // Maximum is max_percent of gross salary
-                    $maxDeduction = min(
-                        $grossSalary * $shortDeductionPercent,
-                        $grossSalary * $shortMaxPercent
-                    );
-                    $deductAmount = min($maxDeduction, $remainingAmount);
-                }
-                
-                $totalAdvanceDeduction += $deductAmount;
-                
-                // Calculate remaining after this deduction
-                $newRemaining = $remainingAmount - $deductAmount;
-                
-                $advancesList[] = [
-                    'id' => $advance->id,
-                    'amount' => (float) $advance->amount,
-                    'remaining_before' => $remainingAmount,
-                    'deducted' => $deductAmount,
-                    'remaining_after' => max(0, $newRemaining),
-                    'type' => $isLongTerm ? 'طويل' : 'قصير',
-                    'carry_over' => max(0, -$newRemaining),
-                ];
-            }
+            // Advance deductions for this specific month only
+            $advanceCalc = self::computeAdvanceDeductions($emp->advances ?? collect(), $month, $year, $grossSalary, $advanceConfig);
+            $totalAdvanceDeduction = $advanceCalc['planned'];
+            $advancesList = $advanceCalc['list'];
             
             // Calculate attendance deductions (late arrivals, early leaves)
             $attendanceRecords = $emp->attendanceRecords ?? collect();
@@ -1085,7 +1038,9 @@ class ReportsController extends Controller
             },
             'advances' => function($q) {
                 $q->where('status', 'approved')
-                  ->where('remaining_amount', '>', 0);
+                  ->where(function($sub) {
+                      $sub->where('remaining_amount', '>', 0)->orWhereNotNull('installments_detail');
+                  });
             },
             'deductions' => function($q) use ($month, $year) {
                 $q->whereMonth('date', $month)->whereYear('date', $year);
@@ -1095,6 +1050,90 @@ class ReportsController extends Controller
                   ->whereYear('date', $year);
             },
         ];
+    }
+
+    /**
+     * حساب خصومات السلفيات لشهر/سنة محددين فقط.
+     * - السلفة القصيرة: تُخصم في شهر اعتمادها فقط (ما لم يُحمل الباقي للشهر التالي).
+     * - السلفة الطويلة: يُخصم القسط المجدول لهذا الشهر فقط (وإذا كان مدفوعاً يُتجاهل).
+     */
+    public static function computeAdvanceDeductions($advances, int $month, int $year, float $grossSalary, array $advanceConfig = []): array
+    {
+        $shortCfg = $advanceConfig['short_advance'] ?? [];
+        $shortDeductionPercent = (float) ($shortCfg['deduction_percent'] ?? 100) / 100;
+        $shortMaxPercent = (float) ($shortCfg['max_percent'] ?? 50) / 100;
+        $shortCap = $grossSalary * min($shortDeductionPercent, $shortMaxPercent);
+
+        $total = 0;
+        $list = [];
+
+        foreach ($advances as $advance) {
+            if (($advance->status ?? null) !== 'approved') continue;
+
+            $amount = (float) ($advance->amount ?? 0);
+            if ($amount <= 0) continue;
+
+            $isLongTerm = ($advance->type ?? 'short') === 'long';
+            $remaining = (float) ($advance->remaining_amount ?? 0);
+            if ($remaining <= 0 && empty($advance->installments_detail)) continue;
+
+            $start = $advance->date ?: $advance->created_at;
+            $startMonth = $start ? (int) date('n', strtotime($start)) : $month;
+            $startYear = $start ? (int) date('Y', strtotime($start)) : $year;
+            $monthOffset = ($year - $startYear) * 12 + ($month - $startMonth);
+
+            $deductAmount = 0;
+            $remainingBefore = $remaining;
+
+            if ($isLongTerm) {
+                $detail = $advance->installments_detail;
+                if (is_string($detail)) {
+                    $detail = json_decode($detail, true);
+                }
+                $detail = is_array($detail) ? $detail : [];
+
+                $matched = null;
+                $hasSchedule = false;
+                foreach ($detail as $inst) {
+                    $instMonth = (int) ($inst['month'] ?? 0);
+                    $instYear = (int) ($inst['year'] ?? 0);
+                    if ($instMonth > 0 && $instYear > 0) {
+                        $hasSchedule = true;
+                    }
+                    if ($instMonth !== $month || $instYear !== $year) continue;
+                    if ($inst['paid'] ?? false) continue;
+                    $matched = $inst;
+                    break;
+                }
+
+                if ($matched !== null) {
+                    $deductAmount = (float) ($matched['amount'] ?? 0);
+                } elseif (!$hasSchedule && $monthOffset >= 0 && $monthOffset < (int) ($advance->installments ?? 1)) {
+                    // تفاصيل أقساط بدون تواريخ: خصم القسط الشهري في شهره
+                    $monthly = (float) ($advance->monthly_installment ?? 0);
+                    $deductAmount = $monthly > 0 ? min($monthly, $remaining) : 0;
+                }
+            } elseif ($monthOffset >= 0) {
+                // سلفة قصيرة: تُخصم في شهرها، والمتبقي (إن لم يتسع الراتب) يُحمل للشهر التالي
+                $remainingBefore = max(0, $amount - ($shortCap * $monthOffset));
+                $deductAmount = min($shortCap, $remainingBefore);
+            }
+
+            if ($deductAmount <= 0) continue;
+
+            $total += $deductAmount;
+            $list[] = [
+                'id' => $advance->id,
+                'amount' => $amount,
+                'remaining_before' => $remainingBefore,
+                'deducted' => $deductAmount,
+                'remaining_after' => max(0, $remainingBefore - $deductAmount),
+                'type' => $isLongTerm ? 'طويل' : 'قصير',
+                'carry_over' => max(0, $remainingBefore - $deductAmount),
+            ];
+        }
+
+        return ['planned' => $total, 'list' => $list];
     }
 
     public static function computeEmployeeSalary($emp, int $month, int $year): array
@@ -1139,31 +1178,9 @@ class ReportsController extends Controller
         // Advance settings
         $advanceSettings = Setting::where('key', 'advances')->first();
         $advanceConfig = $advanceSettings ? $advanceSettings->value : [];
-        $shortAdvanceConfig = $advanceConfig['short_advance'] ?? [];
-        $shortDeductionPercent = (float)($shortAdvanceConfig['deduction_percent'] ?? 100) / 100;
-        $shortMaxPercent = (float)($shortAdvanceConfig['max_percent'] ?? 50) / 100;
 
-        $totalAdvanceDeduction = 0;
-        foreach ($emp->advances as $advance) {
-            if ($advance->status !== 'approved') continue;
-            if (($advance->remaining_amount ?? 0) <= 0) continue;
-
-            $isLongTerm = $advance->type === 'long';
-            $remainingAmount = (float) ($advance->remaining_amount ?? 0);
-
-            $deductAmount = 0;
-            if ($isLongTerm) {
-                $monthlyInst = (float) ($advance->monthly_installment ?? 0);
-                $deductAmount = $monthlyInst > 0 ? min($monthlyInst, $remainingAmount) : $remainingAmount;
-            } else {
-                $maxDeduction = min(
-                    $grossSalary * $shortDeductionPercent,
-                    $grossSalary * $shortMaxPercent
-                );
-                $deductAmount = min($maxDeduction, $remainingAmount);
-            }
-            $totalAdvanceDeduction += $deductAmount;
-        }
+        $advanceCalc = self::computeAdvanceDeductions($emp->advances ?? collect(), $month, $year, $grossSalary, $advanceConfig);
+        $totalAdvanceDeduction = $advanceCalc['planned'];
 
         // Priority: insurance first, then advance, then attendance/other deductions
         $availableAfterInsurance = $grossSalary - $insuranceAmount;

@@ -353,8 +353,8 @@ class BankExportController extends Controller
         };
         ob_end_clean();
 
-        $pdf->SetCreator('Jawda HR');
-        $pdf->SetAuthor($orgName ?: 'Jawda HR');
+        $pdf->SetCreator('ITQAN HR');
+        $pdf->SetAuthor($orgName ?: 'ITQAN HR');
         $pdf->SetTitle('كشف تحويل مرتبات - ' . $bankName);
         $pdf->SetSubject('كشف تحويل مرتبات');
 
