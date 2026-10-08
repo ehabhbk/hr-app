@@ -316,6 +316,12 @@ class AdvancesController extends Controller
                 "تمت الموافقة على سلفة {$employee->name}: " . number_format($a->amount),
                 ['advance_id' => $a->id, 'employee_id' => $employee->id]
             );
+
+            \App\Services\FirebaseService::notifyEmployee(
+                $employee, 'salary', '✅ تمت الموافقة على سلفتك',
+                "تمت الموافقة على سلفة بمبلغ " . number_format($a->amount) . " جنيه",
+                ['advance_id' => $a->id]
+            );
         }
 
         return response()->json(['data' => $a]);
@@ -348,6 +354,12 @@ class AdvancesController extends Controller
                 'تم رفض السلفة',
                 "تم رفض سلفة {$employee->name}: " . number_format($a->amount),
                 ['advance_id' => $a->id, 'employee_id' => $employee->id]
+            );
+
+            \App\Services\FirebaseService::notifyEmployee(
+                $employee, 'salary', '❌ تم رفض سلفتك',
+                "تم رفض طلب سلفة بمبلغ " . number_format($a->amount) . " جنيه",
+                ['advance_id' => $a->id]
             );
         }
 

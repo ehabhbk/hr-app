@@ -151,6 +151,12 @@ class LeavesController extends Controller
                     "تمت الموافقة على إجازة {$employee->name}",
                     ['leave_id' => $leave->id, 'employee_id' => $employee->id]
                 );
+
+                \App\Services\FirebaseService::notifyEmployee(
+                    $employee, 'leave', '✅ تمت الموافقة على إجازتك',
+                    "تمت الموافقة على إجازتك من {$leave->from_date} إلى {$leave->to_date}",
+                    ['leave_id' => $leave->id]
+                );
             }
         } elseif ($r->status === 'rejected') {
             // Check if employee has other approved leaves and update status
@@ -172,6 +178,12 @@ class LeavesController extends Controller
                     'تم رفض الإجازة',
                     "تم رفض إجازة {$employee->name}",
                     ['leave_id' => $leave->id, 'employee_id' => $employee->id]
+                );
+
+                \App\Services\FirebaseService::notifyEmployee(
+                    $employee, 'leave', '❌ تم رفض إجازتك',
+                    "تم رفض إجازتك من {$leave->from_date} إلى {$leave->to_date}",
+                    ['leave_id' => $leave->id]
                 );
             }
         }

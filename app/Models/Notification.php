@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class Notification extends Model
 {
-    use HasFactory;
+    use HasFactory, \App\Traits\SyncsToFirestore;
 
     protected $fillable = [
         'user_id',

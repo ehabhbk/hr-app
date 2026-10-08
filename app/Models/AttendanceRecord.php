@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class AttendanceRecord extends Model
 {
+    use \App\Traits\SyncsToFirestore;
+
     protected $fillable = [
         'employee_id',
         'date',

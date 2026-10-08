@@ -19,6 +19,7 @@ use App\Http\Controllers\IncentivesController;
 use App\Http\Controllers\LeavesController;
 use App\Http\Controllers\LettersController;
 use App\Http\Controllers\MeController;
+use App\Http\Controllers\MobileController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PdfExportController;
 use App\Http\Controllers\ReportsController;
@@ -403,6 +404,18 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
     Route::delete('/notifications/{id}', [NotificationController::class, 'destroy']);
     Route::post('/notifications/send', [NotificationController::class, 'send']);
+
+    /*
+    |-----------------------------------------------------------------------
+    | Mobile App (Flutter)
+    |-----------------------------------------------------------------------
+    */
+    Route::post('/mobile/fcm-token', [MobileController::class, 'registerToken']);
+    Route::get('/mobile/me', [MobileController::class, 'me']);
+    Route::get('/mobile/notifications', [MobileController::class, 'notifications']);
+    Route::post('/mobile/notifications/{id}/read', [MobileController::class, 'readNotification']);
+    Route::post('/mobile/link-employee', [MobileController::class, 'linkEmployee']);
+    Route::get('/mobile/employees', [MobileController::class, 'employees']);
 
     /*
     |-----------------------------------------------------------------------

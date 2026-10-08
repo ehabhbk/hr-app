@@ -61,6 +61,18 @@ class WarningsController extends Controller
                 "تم إصدار إنذار لـ {$employee->name}: {$w->reason}",
                 ['warning_id' => $w->id, 'employee_id' => $employee->id]
             );
+
+            // دفع فوري للجوال باسم مصدر الإنذار
+            $issuer = auth()->user();
+            $issuerName = $issuer?->full_name ?: $issuer?->username ?: 'الإدارة';
+            $wtype = $w->type ?: 'عام';
+            \App\Services\FirebaseService::notifyEmployee(
+                $employee,
+                'warning',
+                "⚠️ إنذار جديد ({$wtype})",
+                "تم إنذارك ({$wtype}) بسبب التقصير في العمل: " . ($w->reason ?: '-') . " — صدر من {$issuerName}",
+                ['warning_id' => $w->id, 'employee_id' => $employee->id]
+            );
         }
 
         return response()->json(['data' => $w], 201);

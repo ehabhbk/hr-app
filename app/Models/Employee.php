@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Traits\SyncsToFirestore;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -14,12 +15,15 @@ use Illuminate\Support\Facades\Storage;
  */
 class Employee extends Model
 {
-    use HasFactory, SoftDeletes;
+    use HasFactory, SoftDeletes, SyncsToFirestore;
 
     /**
      * Fillable attributes (merged from both versions)
      */
     protected $fillable = [
+        // ربط حساب الدخول (تطبيق الجوال)
+        'user_id',
+
         // legacy / HR fields
         'file_number',
         'employee_number',
@@ -141,6 +145,22 @@ class Employee extends Model
     public function attendanceDevice()
     {
         return $this->belongsTo(AttendanceDevice::class, 'attendance_device_id');
+    }
+
+    /**
+     * حساب الدخول المرتبط (تطبيق الجوال).
+     */
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    /**
+     * أجهزة الجوال المسجلة للموظف (FCM).
+     */
+    public function devices()
+    {
+        return $this->hasMany(MobileDevice::class);
     }
 
     public function workShift()

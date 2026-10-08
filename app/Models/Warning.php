@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class Warning extends Model
 {
-    use HasFactory;
+    use HasFactory, \App\Traits\SyncsToFirestore;
 
     protected $table = 'warnings';
 

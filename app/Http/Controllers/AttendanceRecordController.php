@@ -535,6 +535,15 @@ class AttendanceRecordController extends Controller
                 ]);
                 
                 $record->warning_id = $warning->id;
+
+                // دفع فوري للجوال: إنذار تأخير متكرر (المصدر: النظام تلقائياً)
+                \App\Services\FirebaseService::notifyEmployee(
+                    $employee,
+                    'warning',
+                    '⚠️ إنذار تأخير متكرر',
+                    "تم إنذارك بسبب التأخر المتكرر ({$lateCount} مرات خلال الشهر) — صدر من النظام تلقائياً",
+                    ['warning_id' => $warning->id, 'record_id' => $record->id]
+                );
             }
         }
 
@@ -550,6 +559,21 @@ class AttendanceRecordController extends Controller
             } catch (\Exception $e) {
                 \Illuminate\Support\Facades\Log::error('WhatsApp notification error: ' . $e->getMessage());
             }
+
+            // دفع فوري للجوال: تم تسجيل حضور متأخر اليوم + مبلغ الخصم
+            $lateMins = (int) $record->check_in_delay_minutes;
+            $lateDed = number_format((float) ($record->delay_deduction ?? 0), 2);
+            $lateMsg = "تم تسجيل حضور متأخر اليوم ({$lateMins} دقيقة)";
+            if ((float) ($record->delay_deduction ?? 0) > 0) {
+                $lateMsg .= " وخصم {$lateDed} جنيه";
+            }
+            \App\Services\FirebaseService::notifyEmployee(
+                $employee,
+                'late',
+                '⏰ حضور متأخر اليوم',
+                $lateMsg,
+                ['record_id' => $record->id, 'date' => $recordDateStr]
+            );
         }
 
         // Calculate check-out type (always runs, not a deduction).
@@ -868,42 +892,9 @@ class AttendanceRecordController extends Controller
         return $q->first();
     }
 
-    /**
-     * حذف صف حضور آلي مكرر لنفس اليوم (بلا انصراف وبلا أي معالجة يدوية)
-     * بعد إغلاق جلسة مفتوحة من يوم سابق — حتى لا يظهر اليوم مرتين.
-     */
-    private function removeDuplicateAutoCheckIn($employeeId, $date, $keepId)
-    {
-        $dup = AttendanceRecord::where('employee_id', $employeeId)
-            ->where('date', $date)
-            ->where('id', '!=', $keepId)
-            ->whereNotNull('check_in_time')
-            ->whereNull('check_out_time')
-            ->where(function ($q) {
-                $q->where('is_absent', false)->orWhereNull('is_absent');
-            })
-            ->whereNull('notes')
-            ->where(function ($q) {
-                $q->where('delay_excused', false)->orWhereNull('delay_excused');
-            })
-            ->where(function ($q) {
-                $q->where('check_in_excused', false)->orWhereNull('check_in_excused');
-            })
-            ->where(function ($q) {
-                $q->where('absence_excused', false)->orWhereNull('absence_excused');
-            })
-            ->where(function ($q) {
-                $q->where('warning_issued', false)->orWhereNull('warning_issued');
-            })
-            ->whereNull('warning_id')
-            ->first();
-        if ($dup) {
-            $dup->delete();
-        }
-    }
-
-    // Smart fingerprint mode: alternating check-in/check-out across days with debounce.
-    // Last punch was check-in -> next punch is check-out (same day or next day).
+    // Smart fingerprint mode: insert-only sessions with debounce.
+    // Open check-in + next punch = its checkout (same day or next day).
+    // A recorded punch is never rewritten afterwards.
     // Any punch less than 5 minutes after the previous accepted punch is ignored.
     private function processAutoInOut($logs, $fromDate, $toDate, $allowedDelayMinutes)
     {
@@ -967,12 +958,23 @@ class AttendanceRecordController extends Controller
                 ->first();
             // تجاهل السجل المفتوح إن كان ناتجاً من بصمة داخل هذه الدفعة نفسها
             // (دخوله أحدث من أول بصمة) — لتتولى الحلقة أمره بالترتيب الصحيح.
+            // وتُتجاهل أيضاً الجلسة القديمة المنسية إن تحركت البصمات بعدها
+            // (وُجد سجل حضور أحدث منها): آخر بصمة هي المرجع، فالبصمة الجديدة
+            // تفتح حضوراً ولا تغلق جلسة ميتة منذ أيام.
             if ($openCheckInRecord && $batchStart) {
                 $openIn = $openCheckInRecord->check_in_time instanceof Carbon
                     ? $openCheckInRecord->check_in_time->setTimezone($tz)
                     : Carbon::parse($openCheckInRecord->check_in_time)->setTimezone($tz);
                 if ($openIn->gte($batchStart)) {
                     $openCheckInRecord = null;
+                } else {
+                    $movedOn = AttendanceRecord::where('employee_id', $employee->id)
+                        ->whereNotNull('check_in_time')
+                        ->where('check_in_time', '>', $openIn->toDateTimeString())
+                        ->exists();
+                    if ($movedOn) {
+                        $openCheckInRecord = null;
+                    }
                 }
             }
 
@@ -998,10 +1000,11 @@ class AttendanceRecordController extends Controller
 
             if (empty($punches)) continue;
                 
-                // قاعدة التناوب: كل بصمة مقبولة تعكس الحالة.
-                // إن وُجد حضور مفتوح فهذه البصمة انصراف له — حتى لو كانت في اليوم التالي
-                // (مثلاً بصم حضور 9 مساءً فالبصمة التالية انصراف ولو 8 صباح الغد).
-                // وإن لم يوجد مفتوح فهذه البصمة حضور تفتح سجلاً بتاريخها.
+                // قاعدة التسجيل (بلا تحويل أبداً):
+                // - لا يوجد حضور مفتوح → صف جديد بحضور (إدخال دائماً؛
+                //   عدة جلسات في اليوم = عدة صفوف، ولا كتابة فوق سابق).
+                // - يوجد حضور مفتوح → هذه البصمة انصراف له فقط
+                //   (حتى لو في اليوم التالي) — ولا يُمس أي حقل حضور مسجَّل.
                 foreach ($punches as $punch) {
                     $punchTime = Carbon::parse($punch->timestamp)->setTimezone($tz);
                     $punchDate = $punchTime->format('Y-m-d');
@@ -1010,27 +1013,17 @@ class AttendanceRecordController extends Controller
                     $processedLogIds[] = $punch->id;
 
                     if ($openCheckInRecord) {
-                        // البصمة التي تلي حضوراً هي انصراف له حتى لو في اليوم التالي.
-                        $openDate = $openCheckInRecord->date instanceof Carbon
-                            ? $openCheckInRecord->date->format('Y-m-d')
-                            : Carbon::parse($openCheckInRecord->date)->format('Y-m-d');
                         $openCheckInRecord->check_out_time = $punchTime;
                         $openCheckInRecord->save();
                         $this->calculateDeductions($openCheckInRecord);
                         $results[] = $openCheckInRecord;
-                        // إصلاح صفوف قديمة خاطئة: لو كان هذا اليوم يملك صف حضور
-                        // منفصل بلا انصراف (أُنشئ بالمنطق اليومي القديم) والسجل
-                        // المغلق من يوم سابق، يُحذف الصف المكرر حتى لا يتضاعف اليوم.
-                        if ($openDate < $punchDate) {
-                            $this->removeDuplicateAutoCheckIn($employee->id, $punchDate, $openCheckInRecord->id);
-                        }
                         $openCheckInRecord = null;
                     } else {
-                        // Fresh check-in for this punch's date, kept open until the next punch.
-                        $record = AttendanceRecord::updateOrCreate(
-                            ['employee_id' => $employee->id, 'date' => $punchDate],
-                            ['check_in_time' => $punchTime]
-                        );
+                        $record = AttendanceRecord::create([
+                            'employee_id' => $employee->id,
+                            'date' => $punchDate,
+                            'check_in_time' => $punchTime,
+                        ]);
                         $this->calculateDeductions($record);
                         $results[] = $record;
                         $openCheckInRecord = $record;
@@ -1192,20 +1185,22 @@ class AttendanceRecordController extends Controller
         
         $records = $query->get();
         
-        // Group by employee
-        $employeeStats = $records->groupBy('employee_id')->map(function($records, $employeeId) {
+        // Group by employee (day-based counts: multiple sessions per day count once)
+        $dayOf = fn($r) => $r->date instanceof Carbon ? $r->date->format('Y-m-d') : (string) $r->date;
+        $employeeStats = $records->groupBy('employee_id')->map(function($records, $employeeId) use ($dayOf) {
             $employee = $records->first()->employee;
-            
+            $byDay = $records->groupBy($dayOf);
+
             return [
                 'employee_id' => $employeeId,
                 'employee_name' => $employee->name,
                 'department' => $employee->department?->name,
-                'total_days' => $records->count(),
-                'present_days' => $records->whereNotNull('check_in_time')->count(),
-                'absent_days' => $records->whereNull('check_in_time')->count(),
-                'late_days' => $records->where('check_in_type', 'late')->count(),
-                'early_days' => $records->where('check_in_type', 'early')->count(),
-                'on_time_days' => $records->where('check_in_type', 'on_time')->count(),
+                'total_days' => $byDay->count(),
+                'present_days' => $byDay->filter(fn($rows) => $rows->contains(fn($r) => !empty($r->check_in_time)))->count(),
+                'absent_days' => $byDay->filter(fn($rows) => $rows->contains(fn($r) => $r->is_absent))->count(),
+                'late_days' => $byDay->filter(fn($rows) => $rows->contains(fn($r) => $r->check_in_type === 'late'))->count(),
+                'early_days' => $byDay->filter(fn($rows) => $rows->contains(fn($r) => $r->check_in_type === 'early'))->count(),
+                'on_time_days' => $byDay->filter(fn($rows) => $rows->contains(fn($r) => $r->check_in_type === 'on_time'))->count(),
                 'total_delay_minutes' => $records->sum('check_in_delay_minutes'),
                 'total_deduction' => $records->sum('total_deduction'),
                 'deductions_applied' => $records->where('deduction_applied', true)->sum('total_deduction'),
