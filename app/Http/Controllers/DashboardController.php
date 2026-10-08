@@ -367,6 +367,17 @@ class DashboardController extends Controller
             ->get()
             ->groupBy('device_user_id');
 
+        // زمن التأخير المسموح من الإعدادات — يُطبَّق هنا أيضاً ولكل الورديات
+        $lateGrace = 5;
+        try {
+            $attSetting = \App\Models\Setting::where('key', 'attendance')->first();
+            $attVal = $attSetting ? $attSetting->value : [];
+            if (is_string($attVal)) $attVal = json_decode($attVal, true) ?? [];
+            if (isset($attVal['allowed_delay_minutes']) && (int)$attVal['allowed_delay_minutes'] > 0) {
+                $lateGrace = (int)$attVal['allowed_delay_minutes'];
+            }
+        } catch (\Exception $e) { /* keep default */ }
+
         $lateCount = 0;
         foreach ($logs as $userId => $userLogs) {
             $firstLog = $userLogs->first();
@@ -389,7 +400,7 @@ class DashboardController extends Controller
             }
 
             $expected = Carbon::parse($dateStr . ' ' . $expectedTime);
-            if ($logTime->gt($expected)) {
+            if ($logTime->gt($expected->copy()->addMinutes($lateGrace))) {
                 $lateCount++;
             }
         }

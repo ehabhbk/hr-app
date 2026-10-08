@@ -170,8 +170,8 @@ class AttendanceDeviceController extends Controller
             $recentExists = AttendanceDeviceLog::where('device_id', $device->id)
                 ->where('device_user_id', $userId)
                 ->whereBetween('timestamp', [
-                    Carbon::parse($time)->subMinutes(10)->toDateTimeString(),
-                    Carbon::parse($time)->addMinutes(10)->toDateTimeString(),
+                    Carbon::parse($time)->subMinutes(5)->toDateTimeString(),
+                    Carbon::parse($time)->addMinutes(5)->toDateTimeString(),
                 ])
                 ->exists();
 
@@ -231,8 +231,8 @@ class AttendanceDeviceController extends Controller
                         $recentExists = AttendanceDeviceLog::where('device_id', $device->id)
                             ->where('device_user_id', $userId)
                             ->whereBetween('timestamp', [
-                                Carbon::parse($time)->subMinutes(10)->toDateTimeString(),
-                                Carbon::parse($time)->addMinutes(10)->toDateTimeString(),
+                                Carbon::parse($time)->subMinutes(5)->toDateTimeString(),
+                                Carbon::parse($time)->addMinutes(5)->toDateTimeString(),
                             ])
                             ->exists();
 

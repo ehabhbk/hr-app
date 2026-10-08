@@ -18,8 +18,9 @@ class AttendanceRecordController extends Controller
     {
         $query = AttendanceRecord::with([
             'employee' => function($q) {
-                $q->with('attendanceDevice');
-            }, 
+                // تشمل المحذوفين حتى تظهر أسماؤهم بدلاً من "-"
+                $q->withTrashed()->with(['attendanceDevice', 'workShift', 'rotationGroup']);
+            },
             'warning'
         ]);
         
@@ -35,24 +36,35 @@ class AttendanceRecordController extends Controller
             $query->where('date', '<=', $monthEnd->toDateString());
         }
         
-        if ($request->from_date) {
-            $query->where('date', '>=', $request->from_date);
-        }
-        
-        if ($request->to_date) {
-            $query->where('date', '<=', $request->to_date);
+        // نطاق التاريخ: سجلات اليوم نفسه + السجلات التي انصرافها داخل النطاق،
+        // حتى لا تختفي بصمة اليوم التي سُجِّلت انصرافاً لجلسة يوم سابق
+        // (مثل انصراف 12:04 اليوم لجلسة 10-04).
+        if ($request->from_date || $request->to_date) {
+            $from = $request->from_date ?? $request->to_date;
+            $to = $request->to_date ?? $request->from_date;
+            $query->where(function ($q) use ($from, $to) {
+                $q->whereBetween('date', [$from, $to]);
+                $q->orWhere(function ($q2) use ($from, $to) {
+                    $q2->whereNotNull('check_out_time')
+                        ->where('check_out_time', '>=', $from . ' 00:00:00')
+                        ->where('check_out_time', '<=', $to . ' 23:59:59');
+                });
+            });
         }
         
         $perPage = $request->input('per_page', 50);
         $records = $query->orderBy('date', 'desc')->paginate($perPage);
         
         // Add device info from attendance_device_logs
-        $records->getCollection()->transform(function($record) {
+        // + ثواني التأخير/التبكير الدقيقة للعرض (ساعات ودقائق وثوانٍ) بدل الدقائق فقط
+        $tz = 'Africa/Khartoum';
+        $shiftCache = [];
+        $records->getCollection()->transform(function($record) use ($tz, &$shiftCache) {
             if ($record->employee && $record->employee->device_user_id) {
                 $log = \App\Models\AttendanceDeviceLog::where('device_user_id', $record->employee->device_user_id)
                     ->whereDate('timestamp', $record->date)
                     ->first();
-                
+
                 if ($log && $log->device_id) {
                     $device = \App\Models\AttendanceDevice::find($log->device_id);
                     if ($device) {
@@ -61,6 +73,79 @@ class AttendanceRecordController extends Controller
                     }
                 }
             }
+
+            try {
+                $employee = $record->employee;
+                $recordDate = $record->date instanceof Carbon ? $record->date->format('Y-m-d') : $record->date;
+                $effShiftId = $employee ? $employee->getEffectiveShiftForDate($recordDate) : null;
+                if (!$effShiftId && $employee) {
+                    $effShiftId = $employee->work_shift_id;
+                }
+                $shift = null;
+                if ($effShiftId) {
+                    if (!array_key_exists($effShiftId, $shiftCache)) {
+                        $shiftCache[$effShiftId] = WorkShift::find($effShiftId);
+                    }
+                    $shift = $shiftCache[$effShiftId];
+                }
+                $shiftFromFallback = false;
+                if (!$shift && $record->check_in_time) {
+                    $probe = $record->check_in_time instanceof Carbon
+                        ? $record->check_in_time->setTimezone($tz)
+                        : Carbon::parse($record->check_in_time)->setTimezone($tz);
+                    $matched = WorkShift::matchForPunch($probe, $tz);
+                    if ($matched) {
+                        $shift = $matched;
+                        $shiftFromFallback = true;
+                    }
+                }
+
+                if ($shift) {
+                    $shiftStart = $shift->start_time;
+                    $shiftEnd = $shift->end_time;
+                    $overnight = $shift->is_overnight || $shiftEnd < $shiftStart;
+
+                    if ($record->check_in_time && $record->check_in_delay_minutes > 0) {
+                        $startDT = Carbon::parse($recordDate . ' ' . $shiftStart, $tz);
+                        $actual = $record->check_in_time instanceof Carbon
+                            ? $record->check_in_time->setTimezone($tz)
+                            : Carbon::parse($record->check_in_time)->setTimezone($tz);
+                        if ($overnight && $actual->format('H:i:s') <= $shiftEnd) {
+                            $startDT->subDay();
+                        }
+                        $record->check_in_delay_seconds = $actual->gte($startDT)
+                            ? $startDT->diffInSeconds($actual)
+                            : 0;
+                    }
+
+                    if ($record->check_out_time && $record->check_out_early_minutes > 0) {
+                        // ثواني التبكير مقابل أقرب لحظة نهاية فعلية (نفس قاعدة الحضور)
+                        $endDT = Carbon::parse($recordDate . ' ' . $shiftEnd, $tz);
+                        if ($shiftFromFallback) {
+                            $probeOut = $record->check_out_time instanceof Carbon
+                                ? $record->check_out_time->setTimezone($tz)
+                                : Carbon::parse($record->check_out_time)->setTimezone($tz);
+                            $matchedEnd = WorkShift::matchEndDateTime($probeOut, $tz);
+                            if ($matchedEnd) {
+                                $endDT = $matchedEnd;
+                            } elseif ($overnight) {
+                                $endDT->addDay();
+                            }
+                        } elseif ($overnight) {
+                            $endDT->addDay();
+                        }
+                        $actualOut = $record->check_out_time instanceof Carbon
+                            ? $record->check_out_time->setTimezone($tz)
+                            : Carbon::parse($record->check_out_time)->setTimezone($tz);
+                        $record->check_out_early_seconds = $actualOut->lt($endDT)
+                            ? $actualOut->diffInSeconds($endDT)
+                            : 0;
+                    }
+                }
+            } catch (\Exception $e) {
+                // عند أي خلل يُترَك العرض بالدقائق كما كان
+            }
+
             return $record;
         });
         
@@ -343,28 +428,16 @@ class AttendanceRecordController extends Controller
             $shift = WorkShift::find($employee->work_shift_id);
         }
         
-        // If no shift assigned, find the nearest shift based on check-in time
+        // If no shift assigned, match the check-in punch to the nearest shift.
+        $shiftFromFallback = false;
         if (!$shift && $record->check_in_time) {
-            $allShifts = WorkShift::where('active', true)->get();
-            if ($allShifts->isNotEmpty()) {
-                $recordDate = $record->date instanceof Carbon ? $record->date->format('Y-m-d') : $record->date;
-                $actualCheckIn = $record->check_in_time instanceof Carbon
-                    ? $record->check_in_time->setTimezone($tz)
-                    : Carbon::parse($record->check_in_time)->setTimezone($tz);
-                
-                $nearestShift = null;
-                $minDiff = PHP_INT_MAX;
-                
-                foreach ($allShifts as $s) {
-                    $shiftStartDT = Carbon::parse($recordDate . ' ' . $s->start_time, $tz);
-                    $diff = abs($actualCheckIn->diffInMinutes($shiftStartDT));
-                    if ($diff < $minDiff) {
-                        $minDiff = $diff;
-                        $nearestShift = $s;
-                    }
-                }
-                
-                $shift = $nearestShift;
+            $actualCheckIn = $record->check_in_time instanceof Carbon
+                ? $record->check_in_time->setTimezone($tz)
+                : Carbon::parse($record->check_in_time)->setTimezone($tz);
+            $matched = WorkShift::matchForPunch($actualCheckIn, $tz);
+            if ($matched) {
+                $shift = $matched;
+                $shiftFromFallback = true;
             }
         }
         
@@ -385,6 +458,16 @@ class AttendanceRecordController extends Controller
             $actualCheckIn = $record->check_in_time instanceof Carbon 
                 ? $record->check_in_time->setTimezone($tz) 
                 : Carbon::parse($record->check_in_time)->setTimezone($tz);
+
+            // ورديات الليل: بصمة في جهة الصباح (وقتها <= نهاية الوردية)
+            // تتبع بداية مساء اليوم السابق لا مساء نفس اليوم،
+            // حتى يُحسب التأخير وزمن السماح لوردية الليل مثل غيرها
+            // (بصمة 00:04 لسهرة 21:00-08:00 متأخرة لا "مبكر").
+            if ($shift && ($shift->is_overnight || $shiftEnd < $shiftStart)) {
+                if ($actualCheckIn->format('H:i:s') <= $shiftEnd) {
+                    $shiftStartTime->subDay();
+                }
+            }
             
             // Compare times - diffInMinutes from shiftStart to actual gives positive if late
             $delayMinutes = $shiftStartTime->diffInMinutes($actualCheckIn);
@@ -469,14 +552,30 @@ class AttendanceRecordController extends Controller
             }
         }
 
-        // Calculate check-out type (always runs, not a deduction)
+        // Calculate check-out type (always runs, not a deduction).
+        // حالة الانصراف من أقرب زمن انصراف وردية: للموظف بلا وردية مسندة
+        // تُطابَق بصمة الانصراف مع أقرب نهاية وردية (نفس قاعدة الحضور).
         if ($record->check_out_time && !$manualCheckOutType) {
             $recordDate = $record->date instanceof Carbon ? $record->date->format('Y-m-d') : $record->date;
+
             $shiftEndTime = Carbon::parse($recordDate . ' ' . $shiftEnd, $tz);
-            
-            // For overnight shifts: if end_time < start_time, the shift ends the next day
-            if ($shift && ($shift->is_overnight || $shiftEnd < $shiftStart)) {
-                $shiftEndTime->addDay();
+
+            if ($shiftFromFallback) {
+                // أقرب لحظة نهاية فعلية بتاريخها الصحيح (أمس/اليوم/الغد)
+                $probeOut = $record->check_out_time instanceof Carbon
+                    ? $record->check_out_time->setTimezone($tz)
+                    : Carbon::parse($record->check_out_time)->setTimezone($tz);
+                $matchedEnd = WorkShift::matchEndDateTime($probeOut, $tz);
+                if ($matchedEnd) {
+                    $shiftEndTime = $matchedEnd;
+                } elseif ($shift && ($shift->is_overnight || $shiftEnd < $shiftStart)) {
+                    $shiftEndTime->addDay();
+                }
+            } else {
+                // For overnight shifts: if end_time < start_time, the shift ends the next day
+                if ($shift && ($shift->is_overnight || $shiftEnd < $shiftStart)) {
+                    $shiftEndTime->addDay();
+                }
             }
             
             $actualCheckOut = $record->check_out_time instanceof Carbon 
@@ -484,12 +583,17 @@ class AttendanceRecordController extends Controller
                 : Carbon::parse($record->check_out_time)->setTimezone($tz);
             
             $earlyMinutes = $actualCheckOut->diffInMinutes($shiftEndTime);
-            
-            if ($actualCheckOut->lt($shiftEndTime)) {
+
+            // زمن السماح للانصراف = نفس زمن التأخير المسموح، ويُطبَّق على كل الورديات:
+            // الخروج قبل النهاية بمدة ضمن السماح يُحسب في الوقت لا انصرافاً مبكراً.
+            $checkOutGrace = $allowedDelayMinutes;
+            $earlyThreshold = $shiftEndTime->copy()->subMinutes($checkOutGrace);
+
+            if ($actualCheckOut->lt($earlyThreshold)) {
                 $record->check_out_type = 'early';
                 $record->check_out_early_minutes = $earlyMinutes;
-                
-                // Early leave deduction only when rules enabled
+
+                // Early leave deduction only when rules enabled (beyond the grace)
                 if ($rulesEnabled && !$record->check_out_excused) {
                     $baseSalary = $employee->base_salary ?? 0;
                     $positionAllowance = $employee->position_allowance ?? 0;
@@ -497,10 +601,11 @@ class AttendanceRecordController extends Controller
                     $housingAllowance = $employee->housing_allowance ?? 0;
                     $foodAllowance = $employee->food_allowance ?? 0;
                     $grossSalary = $baseSalary + $positionAllowance + $transportAllowance + $housingAllowance + $foodAllowance;
-                    
+
                     $salary = $grossSalary > 0 ? $grossSalary : 1000;
                     $hourlyRate = $salary / 240;
-                    $record->early_leave_deduction = round($hourlyRate * ($record->check_out_early_minutes / 60), 2);
+                    $beyondGrace = max(0, $record->check_out_early_minutes - $checkOutGrace);
+                    $record->early_leave_deduction = round($hourlyRate * ($beyondGrace / 60), 2);
                 }
             } elseif ($actualCheckOut->gt($shiftEndTime)) {
                 $record->check_out_type = 'late';
@@ -509,16 +614,22 @@ class AttendanceRecordController extends Controller
             }
         }
         
-        // Calculate worked hours (always runs)
+        // Calculate worked hours (always runs).
+        // سقف 24 ساعة للجلسة الواحدة: إغلاق حضور قديم مفتوح منذ أيام ببصمة
+        // اليوم كان يعطي آلاف الساعات فيتجاوز decimal(5,2) ويسبب خطأ 500.
         if ($record->check_in_time && $record->check_out_time) {
-            $checkIn = $record->check_in_time instanceof Carbon 
-                ? $record->check_in_time->setTimezone($tz) 
+            $checkIn = $record->check_in_time instanceof Carbon
+                ? $record->check_in_time->setTimezone($tz)
                 : Carbon::parse($record->check_in_time)->setTimezone($tz);
-            $checkOut = $record->check_out_time instanceof Carbon 
-                ? $record->check_out_time->setTimezone($tz) 
+            $checkOut = $record->check_out_time instanceof Carbon
+                ? $record->check_out_time->setTimezone($tz)
                 : Carbon::parse($record->check_out_time)->setTimezone($tz);
-            $worked = $checkIn->diffInMinutes($checkOut);
-            $record->worked_hours = $worked / 60;
+            if ($checkOut->gt($checkIn)) {
+                $worked = $checkIn->diffInMinutes($checkOut);
+                $record->worked_hours = round(min($worked / 60, 24), 2);
+            } else {
+                $record->worked_hours = 0;
+            }
         }
         $record->expected_hours = $expectedHours;
         
@@ -545,6 +656,27 @@ class AttendanceRecordController extends Controller
               ->orWhereNotNull('rotation_shift_ids')
               ->orWhereNotNull('rotation_group_id');
         })->with('workShift', 'leaves', 'rotationGroup')->get();
+
+        // أيام فيها بصمة للموظف (بتوقيت الخرطوم) — البصمة دليل حضور ولو
+        // استُهلكت كانصراف لجلسة اليوم السابق، فلا يُحتسب ذلك اليوم غياباً.
+        $logDatesByEmployee = [];
+        try {
+            $rows = AttendanceDeviceLog::where('timestamp', '>=', $fromDate . ' 00:00:00')
+                ->where('timestamp', '<=', $toDate . ' 23:59:59')
+                ->select('device_user_id', 'timestamp')
+                ->get();
+            foreach ($rows as $r) {
+                $d = Carbon::parse($r->timestamp)->setTimezone($tz)->format('Y-m-d');
+                $key = trim((string) $r->device_user_id);
+                if ($key === '') continue;
+                $logDatesByEmployee[$key][$d] = true;
+                if (is_numeric($key)) {
+                    $logDatesByEmployee[(string) (int) $key][$d] = true;
+                }
+            }
+        } catch (\Exception $e) {
+            $logDatesByEmployee = [];
+        }
 
         $processed = 0;
         $alreadyAbsent = 0;
@@ -601,6 +733,13 @@ class AttendanceRecordController extends Controller
                         $alreadyAbsent++;
                         continue;
                     }
+                }
+
+                // لا غياب مع وجود بصمة في هذا اليوم — حتى لو سُجِّلت انصرافاً
+                // لجلسة اليوم السابق (مثلاً انصراف 8 صباحاً لحضور 9 مساءً).
+                $empDeviceKey = trim((string) ($employee->device_user_id ?? ''));
+                if ($empDeviceKey !== '' && isset($logDatesByEmployee[$empDeviceKey][$dateStr])) {
+                    continue;
                 }
 
                 // Check if we're still within the absence grace period
@@ -708,79 +847,162 @@ class AttendanceRecordController extends Controller
         return $this->processLegacyMode($logs, $fromDate, $toDate, $allowedDelayMinutes);
     }
     
-    // Smart fingerprint mode: per-day processing with debounce
-    // Each day: first punch = check-in, second = check-out
+    /**
+     * مطابقة بصمة الجهاز مع موظف — متسامحة مع المسافات والأصفار البادئة
+     * (مثل "001" مقابل "1") وتشمل الموظفين المحذوفين حتى تظهر أسماؤهم.
+     */
+    private function findEmployeeByDeviceUserId($deviceUserId)
+    {
+        $id = trim((string) $deviceUserId);
+        if ($id === '') {
+            return null;
+        }
+        $q = Employee::withTrashed()->where('device_user_id', $id);
+        // رقم بصمة بصيغة مختلفة لنفس الموظف (أصفار بادئة)
+        if (is_numeric($id)) {
+            $normalized = (string) (int) $id;
+            if ($normalized !== $id) {
+                $q->orWhere('device_user_id', $normalized);
+            }
+        }
+        return $q->first();
+    }
+
+    /**
+     * حذف صف حضور آلي مكرر لنفس اليوم (بلا انصراف وبلا أي معالجة يدوية)
+     * بعد إغلاق جلسة مفتوحة من يوم سابق — حتى لا يظهر اليوم مرتين.
+     */
+    private function removeDuplicateAutoCheckIn($employeeId, $date, $keepId)
+    {
+        $dup = AttendanceRecord::where('employee_id', $employeeId)
+            ->where('date', $date)
+            ->where('id', '!=', $keepId)
+            ->whereNotNull('check_in_time')
+            ->whereNull('check_out_time')
+            ->where(function ($q) {
+                $q->where('is_absent', false)->orWhereNull('is_absent');
+            })
+            ->whereNull('notes')
+            ->where(function ($q) {
+                $q->where('delay_excused', false)->orWhereNull('delay_excused');
+            })
+            ->where(function ($q) {
+                $q->where('check_in_excused', false)->orWhereNull('check_in_excused');
+            })
+            ->where(function ($q) {
+                $q->where('absence_excused', false)->orWhereNull('absence_excused');
+            })
+            ->where(function ($q) {
+                $q->where('warning_issued', false)->orWhereNull('warning_issued');
+            })
+            ->whereNull('warning_id')
+            ->first();
+        if ($dup) {
+            $dup->delete();
+        }
+    }
+
+    // Smart fingerprint mode: alternating check-in/check-out across days with debounce.
+    // Last punch was check-in -> next punch is check-out (same day or next day).
+    // Any punch less than 5 minutes after the previous accepted punch is ignored.
     private function processAutoInOut($logs, $fromDate, $toDate, $allowedDelayMinutes)
     {
         $tz = 'Africa/Khartoum';
         $results = [];
-        $debounceMinutes = 15; // أقل من ربع ساعة بين بصمتين تُتجاهل البصمة الثانية
+        $debounceMinutes = 5; // أقل من 5 دقائق بين بصمتين تُتجاهل البصمة الثانية ولا تُسجَّل
         $processedLogIds = [];
         
         // Group by employee
         $logsByEmployee = $logs->groupBy('device_user_id');
-        
+        // بصمات لم يُعثر لها على موظف (أسماء لا تظهر) تُجمَع هنا للتبليغ عنها
+        // ولا تُعلَّم كمعالَجة حتى يمكن إصلاح الربط وإعادة تشغيل المعالجة
+        $unmatched = [];
+
         foreach ($logsByEmployee as $deviceUserId => $employeeLogs) {
-            $employee = Employee::where('device_user_id', $deviceUserId)->first();
+            $employee = $this->findEmployeeByDeviceUserId($deviceUserId);
             if (!$employee) {
-                $processedLogIds = array_merge($processedLogIds, $employeeLogs->pluck('id')->toArray());
+                $times = $employeeLogs->map(fn($l) => Carbon::parse($l->timestamp)->setTimezone($tz)->toDateTimeString());
+                $unmatched[] = [
+                    'device_user_id' => (string) $deviceUserId,
+                    'punches' => $employeeLogs->count(),
+                    'first_punch' => $times->min(),
+                    'last_punch' => $times->max(),
+                ];
                 continue;
             }
             
-            // Group by date
-            $logsByDate = $employeeLogs->groupBy(fn($log) => Carbon::parse($log->timestamp)->setTimezone($tz)->format('Y-m-d'));
-            
-            // Carry over the employee's most recent open session from the database.
-            // Because the scheduler processes day-by-day (from_date = to_date = today),
-            // a fresh run has no in-memory memory of an open check-in, so a punch that
-            // follows an open check-in (e.g. attended 9 PM today and punched out 8 AM
-            // tomorrow, or checked in at 8 AM and punched out at 4 PM) would otherwise
-            // wrongly become another check-in instead of a check-out.
+            // كل بصمات الموظف داخل النافذة مرتبة من الأقدم للأحدث.
+            // (التاريخ بتوقيت الخرطوم؛ أي بصمة خارج النافذة تُعلَّم كمعالَجة ولا تُعاد)
+            $windowLogs = $employeeLogs->filter(function ($log) use ($tz, $fromDate, $toDate) {
+                $d = Carbon::parse($log->timestamp)->setTimezone($tz)->format('Y-m-d');
+                return $d >= $fromDate && $d <= $toDate;
+            })->sortBy(fn($log) => $log->timestamp)->values();
+
+            foreach ($employeeLogs as $log) {
+                $d = Carbon::parse($log->timestamp)->setTimezone($tz)->format('Y-m-d');
+                if ($d < $fromDate || $d > $toDate) {
+                    $processedLogIds[] = $log->id;
+                }
+            }
+
+            // استرجاع آخر جلسة مفتوحة (حضور بلا انصراف) من قاعدة البيانات.
+            // لأن المعالجة قد تعمل يوماً بيوم، فالبصمة التي تلي حضوراً مفتوحاً
+            // (مثلاً حضور 9 مساءً وانصراف 8 صباح الغد) يجب أن تُسجَّل انصرافاً
+            // لا حضوراً جديداً، حتى لو عولج الحضور في تشغيل سابق.
+            // أول بصمة في هذه الدفعة — أي سجل مفتوح أقدم منها يُغلَق بها.
+            $batchStart = $windowLogs
+                ->map(fn($l) => Carbon::parse($l->timestamp)->setTimezone($tz))
+                ->min();
+            // ملاحظة: البحث حتى نهاية النافذة لا بدايتها فقط، لأن الجلسة المفتوحة
+            // قد تكون من يوم داخل النافذة عولجت بصمته في تشغيل سابق
+            // (مثل حضور 10-04 الذي لم تغلقه بصمة 10-05).
             $openCheckInRecord = AttendanceRecord::where('employee_id', $employee->id)
+                ->whereNotNull('check_in_time')
                 ->whereNull('check_out_time')
-                ->where('date', '<=', $fromDate)
+                ->where(function ($q) {
+                    $q->where('is_absent', false)->orWhereNull('is_absent');
+                })
+                ->where('date', '<=', $toDate)
                 ->orderBy('date', 'desc')
                 ->first();
-            
-            $dates = array_keys($logsByDate->toArray());
-            sort($dates);
-            
-            foreach ($dates as $date) {
-                $dayLogs = $logsByDate[$date];
-                if ($date < $fromDate || $date > $toDate) {
-                    $processedLogIds = array_merge($processedLogIds, $dayLogs->pluck('id')->toArray());
-                    continue;
+            // تجاهل السجل المفتوح إن كان ناتجاً من بصمة داخل هذه الدفعة نفسها
+            // (دخوله أحدث من أول بصمة) — لتتولى الحلقة أمره بالترتيب الصحيح.
+            if ($openCheckInRecord && $batchStart) {
+                $openIn = $openCheckInRecord->check_in_time instanceof Carbon
+                    ? $openCheckInRecord->check_in_time->setTimezone($tz)
+                    : Carbon::parse($openCheckInRecord->check_in_time)->setTimezone($tz);
+                if ($openIn->gte($batchStart)) {
+                    $openCheckInRecord = null;
                 }
-                
-                $sortedLogs = $dayLogs->sortBy(fn($log) => $log->timestamp);
-                
-                // Debounce within this day
-                $filteredLogs = [];
-                $lastAcceptedTime = null;
-                
-                foreach ($sortedLogs as $log) {
-                    $logTime = Carbon::parse($log->timestamp)->setTimezone($tz);
-                    
-                    if ($lastAcceptedTime) {
-                        $diffMinutes = $lastAcceptedTime->diffInMinutes($logTime);
-                        if ($diffMinutes < $debounceMinutes) {
-                            $processedLogIds[] = $log->id;
-                            continue;
-                        }
+            }
+
+            // الفاصل: أي بصمة بعد أقل من 5 دقائق من آخر بصمة مقبولة تُتجاهل
+            // ولا تُسجَّل — وذلك عبر كل البصمات بتسلسلها الزمني وليس داخل اليوم فقط.
+            $punches = [];
+            $lastAcceptedTime = null;
+
+            foreach ($windowLogs as $log) {
+                $logTime = Carbon::parse($log->timestamp)->setTimezone($tz);
+
+                if ($lastAcceptedTime) {
+                    $diffMinutes = $lastAcceptedTime->diffInMinutes($logTime);
+                    if ($diffMinutes < $debounceMinutes) {
+                        $processedLogIds[] = $log->id;
+                        continue;
                     }
-                    
-                    $filteredLogs[] = $log;
-                    $lastAcceptedTime = $logTime;
                 }
+
+                $punches[] = $log;
+                $lastAcceptedTime = $logTime;
+            }
+
+            if (empty($punches)) continue;
                 
-                if (empty($filteredLogs)) continue;
-                
-                // Alternating rule: each accepted punch toggles the open state.
-                // If there is an open check-in, this punch becomes a checkout, even if it
-                // happens on the next day (e.g. punched attendance today and only punches
-                // again tomorrow -> tomorrow's first punch is a checkout).
-                // Otherwise this punch opens a new check-in record for its own date.
-                foreach ($filteredLogs as $punch) {
+                // قاعدة التناوب: كل بصمة مقبولة تعكس الحالة.
+                // إن وُجد حضور مفتوح فهذه البصمة انصراف له — حتى لو كانت في اليوم التالي
+                // (مثلاً بصم حضور 9 مساءً فالبصمة التالية انصراف ولو 8 صباح الغد).
+                // وإن لم يوجد مفتوح فهذه البصمة حضور تفتح سجلاً بتاريخها.
+                foreach ($punches as $punch) {
                     $punchTime = Carbon::parse($punch->timestamp)->setTimezone($tz);
                     $punchDate = $punchTime->format('Y-m-d');
 
@@ -788,12 +1010,20 @@ class AttendanceRecordController extends Controller
                     $processedLogIds[] = $punch->id;
 
                     if ($openCheckInRecord) {
-                        // The fingerprint that follows an attendance/check-in is a checkout,
-                        // even if it is on the next day.
+                        // البصمة التي تلي حضوراً هي انصراف له حتى لو في اليوم التالي.
+                        $openDate = $openCheckInRecord->date instanceof Carbon
+                            ? $openCheckInRecord->date->format('Y-m-d')
+                            : Carbon::parse($openCheckInRecord->date)->format('Y-m-d');
                         $openCheckInRecord->check_out_time = $punchTime;
                         $openCheckInRecord->save();
                         $this->calculateDeductions($openCheckInRecord);
                         $results[] = $openCheckInRecord;
+                        // إصلاح صفوف قديمة خاطئة: لو كان هذا اليوم يملك صف حضور
+                        // منفصل بلا انصراف (أُنشئ بالمنطق اليومي القديم) والسجل
+                        // المغلق من يوم سابق، يُحذف الصف المكرر حتى لا يتضاعف اليوم.
+                        if ($openDate < $punchDate) {
+                            $this->removeDuplicateAutoCheckIn($employee->id, $punchDate, $openCheckInRecord->id);
+                        }
                         $openCheckInRecord = null;
                     } else {
                         // Fresh check-in for this punch's date, kept open until the next punch.
@@ -806,7 +1036,6 @@ class AttendanceRecordController extends Controller
                         $openCheckInRecord = $record;
                     }
                 }
-            }
             
             // If there's still an open record at the end, just keep it
         }
@@ -832,6 +1061,9 @@ class AttendanceRecordController extends Controller
             'processed' => count($results),
             'absences_marked' => $absencesResult['total'],
             'records' => $results,
+            // بصمات جهاز بلا موظف مطابق (أسماء لا تظهر) — تُترك غير معالَجة
+            // حتى يُصلَح رقم البصمة في بطاقة الموظف ثم تُعاد المعالجة
+            'unmatched' => $unmatched,
         ]);
     }
     
@@ -839,6 +1071,7 @@ class AttendanceRecordController extends Controller
     private function processLegacyMode($logs, $fromDate, $toDate, $allowedDelayMinutes)
     {
         $processedLogIds = [];
+        $unmatched = [];
         
         $groupedLogs = $logs->groupBy(function($log) {
             return $log->device_user_id . '_' . Carbon::parse($log->timestamp)->format('Y-m-d');
@@ -851,9 +1084,13 @@ class AttendanceRecordController extends Controller
             $deviceUserId = $parts[0];
             $date = $parts[1];
             
-            $employee = Employee::where('device_user_id', $deviceUserId)->first();
+            $employee = $this->findEmployeeByDeviceUserId($deviceUserId);
             if (!$employee) {
-                $processedLogIds = array_merge($processedLogIds, $userLogs->pluck('id')->toArray());
+                $unmatched[] = [
+                    'device_user_id' => (string) $deviceUserId,
+                    'punches' => $userLogs->count(),
+                    'date' => $date,
+                ];
                 continue;
             }
             
@@ -932,6 +1169,7 @@ class AttendanceRecordController extends Controller
             'processed' => count($results),
             'absences_marked' => $absencesResult['total'],
             'records' => $results,
+            'unmatched' => $unmatched,
         ]);
     }
 

@@ -431,25 +431,58 @@ class ReportsController extends Controller
         }
         $manualEvals = $manualEvals->get()->keyBy('employee_id');
 
-        $evaluations = $employees->map(function($emp) use ($year, $attendanceData, $manualEvals) {
+        // زمن التأخير المسموح + الورديات — حتى يُحسب التأخير لكل موظف
+        // مقابل بداية ورديته هو لا مقابل 08:00 ثابتة (كانت تُظلم ورديات المساء/الليل)
+        $attSettings = Setting::where('key', 'attendance')->first();
+        $attValues = $attSettings ? $attSettings->value : [];
+        if (is_string($attValues)) {
+            $attValues = json_decode($attValues, true) ?? [];
+        }
+        $allowedDelayMinutes = (int) ($attValues['allowed_delay_minutes'] ?? 5);
+        $shiftsById = \App\Models\WorkShift::where('active', true)->get()->keyBy('id');
+
+        $evaluations = $employees->map(function($emp) use ($year, $attendanceData, $manualEvals, $allowedDelayMinutes, $shiftsById) {
             $deviceUserId = $emp->device_user_id ?? $emp->attendance_device_user_id;
             $empAttendance = $attendanceData->get($deviceUserId, collect());
-            
+
             $totalDays = $empAttendance->count();
             $lateDays = 0;
             $earlyLeaveDays = 0;
-            
+
             $uniqueDates = [];
             foreach ($empAttendance as $log) {
                 $logDate = date('Y-m-d', strtotime($log->timestamp));
                 if (!isset($uniqueDates[$logDate])) {
                     $uniqueDates[$logDate] = true;
-                    $actualTime = date('H:i:s', strtotime($log->timestamp));
-                    if ($actualTime > '08:00:00') {
-                        $lateMinutes = (strtotime($actualTime) - strtotime('08:00:00')) / 60;
-                        if ($lateMinutes > 15) $lateDays++;
+                    // وردية الموظف الفعلية في هذا اليوم (تدعم التناوب) ثم ورديته الأساسية
+                    $shift = null;
+                    try {
+                        $effShiftId = $emp->getEffectiveShiftForDate($logDate);
+                        if ($effShiftId && isset($shiftsById[$effShiftId])) {
+                            $shift = $shiftsById[$effShiftId];
+                        }
+                    } catch (\Exception $e) {
+                        $shift = null;
                     }
-                    if ($actualTime < '17:00:00') {
+                    if (!$shift && $emp->work_shift_id && isset($shiftsById[$emp->work_shift_id])) {
+                        $shift = $shiftsById[$emp->work_shift_id];
+                    }
+                    // بلا وردية: تُطابَق البصمة مع ورديتها (الظهر للصباحية لا المسائية)
+                    if (!$shift) {
+                        try {
+                            $shift = \App\Models\WorkShift::matchForPunch(Carbon::parse($log->timestamp));
+                        } catch (\Exception $e) {
+                            $shift = null;
+                        }
+                    }
+                    $shiftStart = $shift->start_time ?? '08:00';
+                    $shiftEnd = $shift->end_time ?? '17:00';
+                    $actualTime = date('H:i:s', strtotime($log->timestamp));
+                    if ($actualTime > $shiftStart) {
+                        $lateMinutes = (strtotime($actualTime) - strtotime($shiftStart)) / 60;
+                        if ($lateMinutes > $allowedDelayMinutes) $lateDays++;
+                    }
+                    if ($actualTime < $shiftEnd) {
                         $earlyLeaveDays++;
                     }
                 }

@@ -91,13 +91,13 @@ class AttendanceDeviceLogsController extends Controller
 
         $recentExists = AttendanceDeviceLog::where('device_user_id', $validated['device_user_id'])
             ->whereBetween('timestamp', [
-                Carbon::parse($time)->subMinutes(10)->toDateTimeString(),
-                Carbon::parse($time)->addMinutes(10)->toDateTimeString(),
+                Carbon::parse($time)->subMinutes(5)->toDateTimeString(),
+                Carbon::parse($time)->addMinutes(5)->toDateTimeString(),
             ])
             ->exists();
 
         if ($recentExists) {
-            return response()->json(['message' => 'توجد بصمة مسجلة خلال 10 دقائق من هذا التوقيت'], 422);
+            return response()->json(['message' => 'توجد بصمة مسجلة خلال 5 دقائق من هذا التوقيت'], 422);
         }
 
         $validated['timestamp'] = $time;

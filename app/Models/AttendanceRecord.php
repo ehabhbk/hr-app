@@ -63,7 +63,8 @@ class AttendanceRecord extends Model
 
     public function employee(): BelongsTo
     {
-        return $this->belongsTo(Employee::class);
+        // تشمل الموظفين المحذوفين (soft delete) حتى لا تختفي أسماؤهم من السجلات
+        return $this->belongsTo(Employee::class)->withTrashed();
     }
 
     public function warning(): BelongsTo
