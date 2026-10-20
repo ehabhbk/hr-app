@@ -12,6 +12,8 @@ use Carbon\Carbon;
 
 class LettersController extends Controller
 {
+    use PdfHelpersTrait;
+
     public function exportPdf(Request $request)
     {
         $type = $request->input('type');
@@ -27,7 +29,7 @@ class LettersController extends Controller
         
         $letterData = [
             'organization' => [
-                'name' => $orgData['name'] ?? 'مؤسسة ITQAN HR',
+                'name' => $orgData['name'] ?? 'مؤسسة SCARLET HR',
                 'address' => $orgData['address'] ?? '',
                 'phone' => $orgData['phone'] ?? '',
                 'email' => $orgData['email'] ?? '',
@@ -78,23 +80,37 @@ class LettersController extends Controller
             return response()->json(['error' => 'نوع خطاب غير صالح'], 400);
         }
 
+        // Allow the user to override the generated letter body with an edited version.
+        if (isset($params['custom_body']) && trim((string)$params['custom_body']) !== '') {
+            $content['body'] = $params['custom_body'];
+        }
+
         $html = $this->generatePdfLetterHtml($letterData, $content, $orgData);
         
         $typeLabel = $this->getLetterTypeLabel($type);
         $filename = "خطاب_{$typeLabel}_{$employee->name}_" . date('Ymd') . ".pdf";
 
+        $mt = (int)($pdfCfg['margin_top'] ?? 15);
+        $mb = (int)($pdfCfg['margin_bottom'] ?? 15);
+        $ml = (int)($pdfCfg['margin_left'] ?? 15);
+        $mr = (int)($pdfCfg['margin_right'] ?? 15);
+        $fontSize = (int)($pdfCfg['font_size'] ?? 12);
+
         ob_start();
-        $pdf = new \TCPDF('P', 'mm', 'A4', true, 'UTF-8', false);
+        $pdf = $this->createTcpdf($pdfCfg);
         ob_end_clean();
 
-        $pdf->SetCreator('ITQAN HR');
-        $pdf->SetAuthor($orgData['name'] ?? 'ITQAN HR');
+        $pdf->SetCreator('SCARLET HR');
+        $pdf->SetAuthor($orgData['name'] ?? 'SCARLET HR');
         $pdf->SetTitle('خطاب ' . $typeLabel);
         $pdf->SetSubject('خطاب ' . $typeLabel);
 
         $pdf->setRTL(true);
-        $pdf->SetFont('dejavusans', '', 10);
-        $pdf->SetAutoPageBreak(true, 25);
+        $pdf->SetMargins($ml, $mt, $mr);
+        $pdf->SetHeaderMargin(0);
+        $pdf->SetFooterMargin($mb);
+        $pdf->SetFont($this->getConfiguredFont($pdfCfg), '', $fontSize);
+        $pdf->SetAutoPageBreak(true, $mb + 10);
 
         $pdf->AddPage();
 
@@ -114,138 +130,28 @@ class LettersController extends Controller
     
     private function generatePdfLetterHtml($data, $content, $org)
     {
-        $orgD = $data['organization'];
         $cfg = $data['pdf_settings'] ?? [];
-        
-        $logoSize = (int)($cfg['logo_width'] ?? 55);
-        $stampSize = (int)($cfg['stamp_width'] ?? 55);
+
         $fontSize = (int)($cfg['font_size'] ?? 12);
         $lineH = (int)($cfg['line_height'] ?? 2);
-        $mt = (int)($cfg['margin_top'] ?? 15);
-        $mb = (int)($cfg['margin_bottom'] ?? 15);
-        $ml = (int)($cfg['margin_left'] ?? 15);
-        $mr = (int)($cfg['margin_right'] ?? 15);
-        $showHeader = ($cfg['show_header'] ?? true) !== false;
-        $showFooter = ($cfg['show_footer'] ?? true) !== false;
-        $showStamp = ($cfg['show_stamp'] ?? true) !== false;
-        $showSignatures = ($cfg['show_signatures'] ?? true) !== false;
-        $showGM = ($cfg['show_gm_signature'] ?? true) !== false;
-        $showHR = ($cfg['show_hr_signature'] ?? true) !== false;
-        $showFinance = ($cfg['show_finance_signature'] ?? false) !== false;
-        $gmTitle = $cfg['gm_title'] ?? 'المدير العام';
-        $hrTitle = $cfg['hr_title'] ?? 'مدير الموارد البشرية';
-        $financeTitle = $cfg['finance_title'] ?? 'المدير المالي';
-        $gmName = $orgD['general_manager_name'] ?? '';
-        $hrName = $orgD['hr_manager_name'] ?? '';
-        $financeName = $orgD['finance_manager_name'] ?? '';
-
-        $logoHtml = '';
-        if (!empty($orgD['logo_url']) && file_exists($orgD['logo_url'])) {
-            $logoBase64 = base64_encode(file_get_contents($orgD['logo_url']));
-            $logoExt = pathinfo($orgD['logo_url'], PATHINFO_EXTENSION);
-            $logoMime = 'image/' . ($logoExt === 'jpg' ? 'jpeg' : $logoExt);
-            $logoHtml = '<img src="data:' . $logoMime . ';base64,' . $logoBase64 . '" style="height:' . $logoSize . 'px;width:' . $logoSize . 'px;object-fit:contain;">';
-        }
-        
-        $stampHtml = '';
-        if (!empty($orgD['stamp_url']) && file_exists($orgD['stamp_url'])) {
-            $stampBase64 = base64_encode(file_get_contents($orgD['stamp_url']));
-            $stampExt = pathinfo($orgD['stamp_url'], PATHINFO_EXTENSION);
-            $stampMime = 'image/' . ($stampExt === 'jpg' ? 'jpeg' : $stampExt);
-            $stampHtml = '<img src="data:' . $stampMime . ';base64,' . $stampBase64 . '" style="height:' . $stampSize . 'px;width:' . $stampSize . 'px;object-fit:contain;opacity:0.85;">';
-        }
-
-        function _sigImg($url, $size = 80) {
-            if (!$url || !file_exists($url)) return '';
-            $b64 = base64_encode(file_get_contents($url));
-            $ext = pathinfo($url, PATHINFO_EXTENSION);
-            $mime = 'image/' . ($ext === 'jpg' ? 'jpeg' : $ext);
-            return '<img src="data:' . $mime . ';base64,' . $b64 . '" style="height:' . $size . 'px;object-fit:contain;">';
-        }
-
-        $gmSig = _sigImg($orgD['gm_signature_url'] ?? null);
-        $hrSig = _sigImg($orgD['hr_signature_url'] ?? null);
-        $financeSig = _sigImg($orgD['finance_signature_url'] ?? null);
 
         $body = $content['body'] ?? '';
         $body = str_replace('شركة', 'مؤسسة', $body);
         $body = str_replace('مدير عام الشركة', 'مدير عام المؤسسة', $body);
-        
-        $logoPlaceholder = '<div style="width:' . $logoSize . 'px;height:' . $logoSize . 'px;background:#f0f4ff;border:1px solid #c7d2fe;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#6366f1;font-size:9px;font-weight:bold;">شعار</div>';
-        $stampPlaceholder = '<div style="width:' . $stampSize . 'px;height:' . $stampSize . 'px;border:1.5px dashed #cbd5e1;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:7px;font-weight:bold;">ختم</div>';
 
-        $headerHtml = '';
-        if ($showHeader) {
-            $headerHtml = '
-            <table style="width:100%;border:none;border-collapse:collapse;margin-bottom:12px;">
-                <tr>
-                    <td style="width:' . ($logoSize + 10) . 'px;text-align:center;vertical-align:middle;">
-                        ' . ($logoHtml ?: $logoPlaceholder) . '
-                    </td>
-                    <td style="text-align:center;padding:5px 10px;vertical-align:middle;">
-                        <h1 style="font-size:18px;font-weight:bold;color:#1e3a5f;margin:0;letter-spacing:0.5px;">' . htmlspecialchars($orgD['name']) . '</h1>
-                        ' . ($orgD['address'] ? '<p style="font-size:9px;color:#64748b;margin:3px 0;">العنوان: ' . htmlspecialchars($orgD['address']) : '') . '
-                        ' . ($orgD['phone'] ? ' | هاتف: ' . htmlspecialchars($orgD['phone']) : '') . '</p>
-                        ' . ($orgD['email'] ? '<p style="font-size:9px;color:#64748b;margin:3px 0;">بريد: ' . htmlspecialchars($orgD['email']) . '</p>' : '') . '
-                    </td>
-                    <td style="width:' . ($logoSize + 10) . 'px;"></td>
-                </tr>
-            </table>
-            <div style="height:3px;background:linear-gradient(90deg, #1e3a5f, #3b82f6, #6366f1, #3b82f6, #1e3a5f);margin:8px 0 15px 0;border-radius:2px;"></div>';
+        // Hide the date/reference block if the user turned it off.
+        if (($cfg['show_reference'] ?? true) === false) {
+            $body = preg_replace('/<div class=\'letter-header\'>.*?<\/div>/s', '', $body);
         }
 
-        $footerHtml = '';
-        if ($showFooter) {
-            $footerHtml = '
-            <div style="height:1.5px;background:linear-gradient(90deg, transparent, #cbd5e1, transparent);margin:20px 0;"></div>
-            <div style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:6px 12px;margin-top:12px;text-align:center;">
-                <p style="font-size:7px;color:#64748b;margin:0;">
-                    <strong>' . htmlspecialchars($orgD['name']) . '</strong> — تاريخ الطباعة: ' . now()->format('Y-m-d H:i') . '
-                </p>
-            </div>';
-        }
-
-        $stampFooter = '';
-        if ($showStamp) {
-            $stampFooter = '<div style="text-align:center;"><div style="margin-top:10px;display:inline-block;">' . ($stampHtml ?: $stampPlaceholder) . '</div><p style="font-size:8px;color:#64748b;margin:4px 0 0 0;">ختم المؤسسة</p></div>';
-        }
-
-        $sigHtml = '';
-        if ($showSignatures) {
-            $sigCells = '';
-            $colWidth = $showFinance ? 30 : 35;
-            
-            if ($showFinance) {
-                $sigCells .= '<td style="width:' . $colWidth . '%;text-align:center;vertical-align:top;padding:8px;">
-                    <div style="min-height:50px;display:flex;align-items:center;justify-content:center;">' . ($financeSig ?: '<div style="border-bottom:1.5px solid #1e3a5f;width:120px;"></div>') . '</div>
-                    <p style="font-size:10px;font-weight:bold;color:#1e3a5f;">' . htmlspecialchars($financeTitle) . '</p>
-                    ' . ($financeName ? '<p style="font-size:8px;color:#333;margin:2px 0;">' . htmlspecialchars($financeName) . '</p>' : '<p style="font-size:7px;color:#94a3b8;margin:2px 0;">الاسم: ........................</p>') . '
-                    <p style="font-size:7px;color:#94a3b8;margin:2px 0;">التوقيع: ....................</p>
-                </td>';
-            }
-
-            $sigCells .= '<td style="width:' . $colWidth . '%;text-align:center;vertical-align:top;padding:8px;">
-                <div style="min-height:50px;display:flex;align-items:center;justify-content:center;">' . ($hrSig ?: '<div style="border-bottom:1.5px solid #1e3a5f;width:120px;"></div>') . '</div>
-                <p style="font-size:10px;font-weight:bold;color:#1e3a5f;">' . htmlspecialchars($hrTitle) . '</p>
-                ' . ($hrName ? '<p style="font-size:8px;color:#333;margin:2px 0;">' . htmlspecialchars($hrName) . '</p>' : '<p style="font-size:7px;color:#94a3b8;margin:2px 0;">الاسم: ........................</p>') . '
-                <p style="font-size:7px;color:#94a3b8;margin:2px 0;">التوقيع: ....................</p>
-            </td>';
-
-            $sigCells .= '<td style="width:' . $colWidth . '%;text-align:center;vertical-align:top;padding:8px;">
-                <div style="min-height:50px;display:flex;align-items:center;justify-content:center;">' . ($gmSig ?: '<div style="border-bottom:1.5px solid #059669;width:120px;"></div>') . '</div>
-                <p style="font-size:10px;font-weight:bold;color:#059669;">' . htmlspecialchars($gmTitle) . '</p>
-                ' . ($gmName ? '<p style="font-size:8px;color:#333;margin:2px 0;">' . htmlspecialchars($gmName) . '</p>' : '<p style="font-size:7px;color:#94a3b8;margin:2px 0;">الاسم: ........................</p>') . '
-                <p style="font-size:7px;color:#94a3b8;margin:2px 0;">التوقيع: ....................</p>
-            </td>';
-
-            $sigHtml = '<table style="width:100%;border:none;border-collapse:collapse;margin-top:20px;">
-                <tr>' . $sigCells . '</tr>
-            </table>';
-        }
+        $headerHtml = $this->getOfficialHeaderHtml($org, $cfg);
+        // Stamp + signatures + footer info are rendered once together via getOfficialFooterHtml.
+        $footerBlock = ($cfg['show_footer'] ?? true) !== false
+            ? $this->getOfficialFooterHtml($org, $cfg)
+            : '';
 
         $html = '
         <style>
-            @page { margin: ' . $mt . 'mm ' . $mr . 'mm ' . $mb . 'mm ' . $ml . 'mm; }
             body { font-family: Amiri, dejavusans, sans-serif; font-size: ' . $fontSize . 'px; line-height: ' . $lineH . '; text-align: right; direction: rtl; color: #1e293b; margin: 0; padding: 0; }
             * { box-sizing: border-box; }
         </style>
@@ -258,9 +164,7 @@ class LettersController extends Controller
         
         ' . $body . '
         
-        ' . $stampFooter . '
-        ' . $sigHtml . '
-        ' . $footerHtml . '
+        ' . $footerBlock . '
         ';
         
         return $html;
@@ -279,7 +183,7 @@ class LettersController extends Controller
         
         $letterData = [
             'organization' => [
-                'name' => $orgData['name'] ?? 'مؤسسة ITQAN HR',
+                'name' => $orgData['name'] ?? 'مؤسسة SCARLET HR',
                 'address' => $orgData['address'] ?? '',
                 'phone' => $orgData['phone'] ?? '',
                 'email' => $orgData['email'] ?? '',
@@ -429,10 +333,6 @@ class LettersController extends Controller
                 <div class='signature'>
                     <p>مع خالص التحية،</p>
                     <br/>
-                    <p class='font-bold'>إدارة الموارد البشرية</p>
-                    <p>{$data['organization']['name']}</p>
-                    <p>{$data['organization']['address']}</p>
-                    <p>ت: {$data['organization']['phone']}</p>
                 </div>
             ",
         ];
@@ -474,14 +374,6 @@ class LettersController extends Controller
                     </ul>
                     <p class='mb-4'>وفي حالة تكرار المخالفة، سيتم اتخاذ الإجراءات التأديبية اللازمة وفقاً للائحة الداخلية للمؤسسة.</p>
                 </div>
-                <div class='signature'>
-                    <p>التوقيع بالعلم والخبرة.</p>
-                    <br/>
-                    <br/>
-                    <p>الاسم: ________________________</p>
-                    <p>التوقيع: ________________________</p>
-                    <p>التاريخ: ________________________</p>
-                </div>
             ",
         ];
     }
@@ -521,21 +413,6 @@ class LettersController extends Controller
                     <br/>
                     <p>هذه الشهادة تُصدر لـ: <strong>{$purpose}</strong></p>
                 </div>
-                <br/>
-                <div class='signature-section'>
-                    <div class='signature-box signature-left'>
-                        <p>مدير الموارد البشرية</p>
-                        <br/>
-                        <p>التوقيع: _______________</p>
-                        <div class='stamp-area signature-stamp' data-stamp='hr'></div>
-                    </div>
-                    <div class='signature-box signature-right'>
-                        <p>مدير عام المؤسسة</p>
-                        <br/>
-                        <p>التوقيع: _______________</p>
-                        <div class='stamp-area signature-stamp' data-stamp='manager'></div>
-                    </div>
-                </div>
             ",
         ];
     }
@@ -572,21 +449,6 @@ class LettersController extends Controller
                     <br/>
                     <p>هذه الشهادة تُصدر لـ: <strong>{$purpose}</strong></p>
                     <p>وبرغبة من صاحب الشأن لإرفاقها بالملف.</p>
-                </div>
-                <br/>
-                <div class='signature-section'>
-                    <div class='signature-box signature-left'>
-                        <p>مدير الموارد البشرية</p>
-                        <br/>
-                        <p>التوقيع: _______________</p>
-                        <div class='stamp-area signature-stamp' data-stamp='hr'></div>
-                    </div>
-                    <div class='signature-box signature-right'>
-                        <p>مدير عام المؤسسة</p>
-                        <br/>
-                        <p>التوقيع: _______________</p>
-                        <div class='stamp-area signature-stamp' data-stamp='manager'></div>
-                    </div>
                 </div>
             ",
         ];
@@ -633,21 +495,6 @@ class LettersController extends Controller
                     </ul>
                     <br/>
                     <p>هذه الشهادة تُصدر لـ: <strong>{$purpose}</strong></p>
-                </div>
-                <br/>
-                <div class='signature-section'>
-                    <div class='signature-box signature-left'>
-                        <p>مدير الموارد البشرية</p>
-                        <br/>
-                        <p>التوقيع: _______________</p>
-                        <div class='stamp-area signature-stamp' data-stamp='hr'></div>
-                    </div>
-                    <div class='signature-box signature-right'>
-                        <p>مدير عام المؤسسة</p>
-                        <br/>
-                        <p>التوقيع: _______________</p>
-                        <div class='stamp-area signature-stamp' data-stamp='manager'></div>
-                    </div>
                 </div>
             ",
         ];
@@ -710,8 +557,6 @@ class LettersController extends Controller
                 <div class='signature'>
                     <p>مع خالص التحية،</p>
                     <br/>
-                    <p class='font-bold'>إدارة الموارد البشرية</p>
-                    <p>{$data['organization']['name']}</p>
                 </div>
             ",
         ];
@@ -777,20 +622,8 @@ class LettersController extends Controller
                 </div>
                 <br/>
                 <div class='flex justify-between mt-8'>
-                    <div class='text-center'>
+                    <div class='text-center' style='width:33%;margin:0 auto;'>
                         <p>الموظف</p>
-                        <br/>
-                        <p>التوقيع: _______________</p>
-                        <p>التاريخ: _______________</p>
-                    </div>
-                    <div class='text-center'>
-                        <p>مدير القسم</p>
-                        <br/>
-                        <p>التوقيع: _______________</p>
-                        <p>التاريخ: _______________</p>
-                    </div>
-                    <div class='text-center'>
-                        <p>مدير الموارد البشرية</p>
                         <br/>
                         <p>التوقيع: _______________</p>
                         <p>التاريخ: _______________</p>
@@ -864,18 +697,8 @@ class LettersController extends Controller
                 </div>
                 <br/>
                 <div class='flex justify-between mt-8'>
-                    <div class='text-center'>
+                    <div class='text-center' style='width:33%;margin:0 auto;'>
                         <p>الموظف</p>
-                        <br/>
-                        <p>التوقيع: _______________</p>
-                    </div>
-                    <div class='text-center'>
-                        <p>مدير الموارد البشرية</p>
-                        <br/>
-                        <p>التوقيع: _______________</p>
-                    </div>
-                    <div class='text-center'>
-                        <p>مدير عام المؤسسة</p>
                         <br/>
                         <p>التوقيع: _______________</p>
                     </div>
@@ -943,8 +766,6 @@ class LettersController extends Controller
                 <div class='signature'>
                     <p>مع خالص التحية،</p>
                     <br/>
-                    <p class='font-bold'>إدارة الموارد البشرية</p>
-                    <p>{$data['organization']['name']}</p>
                 </div>
             ",
         ];
@@ -980,12 +801,6 @@ class LettersController extends Controller
                     <p class='mb-4'>نُفيدكم بأنه قد تقرر نقل سيادتكم من قسم <strong>{$fromDept}</strong> إلى قسم <strong>{$toDept}</strong>، اعتباراً من تاريخ <strong>{$effectiveDate}</strong>.</p>
                     <p class='mb-4'>السبب: <strong>{$reason}</strong></p>
                     <p>نرجو التوجه إلى القسم الجديد لاستلام مهامكم.</p>
-                </div>
-                <div class='signature'>
-                    <p>مع خالص التحية،</p>
-                    <br/>
-                    <p class='font-bold'>إدارة الموارد البشرية</p>
-                    <p>{$data['organization']['name']}</p>
                 </div>
             ",
         ];

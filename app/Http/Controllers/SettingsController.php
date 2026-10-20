@@ -181,6 +181,9 @@ class SettingsController extends Controller
                 'show_gm_signature', 'show_hr_signature', 'show_finance_signature',
                 'header_text', 'footer_text',
                 'gm_title', 'hr_title', 'finance_title',
+                'font_family', 'header_color', 'title_color',
+                'page_size', 'page_orientation', 'show_reference',
+                'footer_left_text', 'footer_right_text', 'rows_per_page',
             ]));
 
             Setting::updateOrCreate(['key' => 'pdf_settings'], ['value' => $data]);
@@ -217,6 +220,15 @@ class SettingsController extends Controller
             'gm_title' => 'المدير العام',
             'hr_title' => 'مدير الموارد البشرية',
             'finance_title' => 'المدير المالي',
+            'font_family' => 'dejavusans',
+            'header_color' => '#1e3a5f',
+            'title_color' => '#1e3a5f',
+            'page_size' => 'A4',
+            'page_orientation' => 'P',
+            'show_reference' => true,
+            'footer_left_text' => '',
+            'footer_right_text' => '',
+            'rows_per_page' => 25,
         ];
     }
 
@@ -284,7 +296,7 @@ class SettingsController extends Controller
     {
         try {
             $phone = $request->input('phone');
-            $message = $request->input('message', 'اختبار من نظام ITQAN HR');
+            $message = $request->input('message', 'اختبار من نظام SCARLET HR');
 
             $whatsapp = new \App\Services\WhatsAppService();
             $result = $whatsapp->sendMessage($phone, $message);

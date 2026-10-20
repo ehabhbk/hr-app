@@ -10,221 +10,6 @@ use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 use TCPDF;
 
-trait PdfHelpersTrait
-{
-    protected function getOrganizationData()
-    {
-        $org = Setting::where('key', 'organization')->first();
-        return $org ? $org->value : [
-            'name' => 'ITQAN HR',
-            'address' => '',
-            'phone' => '',
-            'email' => '',
-            'tax_number' => '',
-            'logo' => null,
-            'stamp' => null,
-        ];
-    }
-
-    protected function getLogoHtml($org, $height = 60)
-    {
-        $logoHtml = '';
-        if (!empty($org['logo'])) {
-            $logoPath = public_path('storage/' . $org['logo']);
-            if ($logoPath && file_exists($logoPath) && is_readable($logoPath)) {
-                $logoBase64 = @base64_encode(@file_get_contents($logoPath));
-                if ($logoBase64) {
-                    $logoExt = pathinfo($logoPath, PATHINFO_EXTENSION);
-                    $logoExt = strtolower($logoExt);
-                    $logoMime = ($logoExt === 'jpg' || $logoExt === 'jpeg') ? 'image/jpeg' : 'image/png';
-                    $logoHtml = '<img src="data:' . $logoMime . ';base64,' . $logoBase64 . '" style="height:' . $height . 'px;width:' . $height . 'px;object-fit:contain;">';
-                }
-            }
-        }
-        return $logoHtml;
-    }
-
-    protected function getStampHtml($org, $height = 70)
-    {
-        $stampHtml = '';
-        if (!empty($org['stamp'])) {
-            $stampPath = public_path('storage/' . $org['stamp']);
-            if ($stampPath && file_exists($stampPath) && is_readable($stampPath)) {
-                $stampBase64 = @base64_encode(@file_get_contents($stampPath));
-                if ($stampBase64) {
-                    $stampExt = pathinfo($stampPath, PATHINFO_EXTENSION);
-                    $stampExt = strtolower($stampExt);
-                    $stampMime = ($stampExt === 'jpg' || $stampExt === 'jpeg') ? 'image/jpeg' : 'image/png';
-                    $stampHtml = '<img src="data:' . $stampMime . ';base64,' . $stampBase64 . '" style="height:' . $height . 'px;width:' . $height . 'px;object-fit:contain;opacity:0.85;">';
-                }
-            }
-        }
-        return $stampHtml;
-    }
-
-    protected function getOfficialHeaderHtml($org)
-    {
-        $logoHtml = $this->getLogoHtml($org, 55);
-        $orgName = htmlspecialchars($org['name'] ?? 'ITQAN HR');
-        $orgAddress = htmlspecialchars($org['address'] ?? '');
-        $orgPhone = htmlspecialchars($org['phone'] ?? '');
-        $orgEmail = htmlspecialchars($org['email'] ?? '');
-        $taxNumber = htmlspecialchars($org['tax_number'] ?? '');
-
-        $logoPlaceholder = '<div style="width:55px;height:55px;background:#f0f4ff;border:1px solid #c7d2fe;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#6366f1;font-size:9px;font-weight:bold;">شعار</div>';
-
-        $infoParts = array_filter([
-            $orgAddress ? 'العنوان: ' . $orgAddress : null,
-            $orgPhone ? 'هاتف: ' . $orgPhone : null,
-            $orgEmail ? 'بريد: ' . $orgEmail : null,
-        ]);
-
-        return '
-        <table style="width:100%;border:none;margin-bottom:12px;border-collapse:collapse;">
-            <tr>
-                <td style="width:65px;text-align:center;border:none;vertical-align:middle;padding:5px;">
-                    ' . ($logoHtml ?: $logoPlaceholder) . '
-                </td>
-                <td style="border:none;padding:5px 10px;vertical-align:middle;">
-                    <table style="width:100%;border:none;border-collapse:collapse;">
-                        <tr>
-                            <td style="text-align:center;border:none;">
-                                <h1 style="font-size:18px;margin:0;color:#1e3a5f;font-weight:bold;letter-spacing:0.5px;">' . $orgName . '</h1>
-                            </td>
-                        </tr>
-                        ' . (!empty($infoParts) ? '
-                        <tr>
-                            <td style="text-align:center;border:none;">
-                                <p style="font-size:9px;color:#64748b;margin:3px 0 0 0;">' . implode(' &nbsp;|&nbsp; ', $infoParts) . '</p>
-                            </td>
-                        </tr>' : '') . '
-                        ' . ($taxNumber ? '
-                        <tr>
-                            <td style="text-align:center;border:none;">
-                                <p style="font-size:8px;color:#94a3b8;margin:2px 0 0 0;">الرقم الضريبي: ' . $taxNumber . '</p>
-                            </td>
-                        </tr>' : '') . '
-                    </table>
-                </td>
-                <td style="width:65px;border:none;"></td>
-            </tr>
-        </table>
-        <div style="height:3px;background:linear-gradient(90deg,#1e3a5f,#3b82f6,#6366f1,#3b82f6,#1e3a5f);margin:8px 0 15px 0;border-radius:2px;"></div>';
-    }
-
-    protected function getOfficialFooterHtml($org)
-    {
-        $stampHtml = $this->getStampHtml($org, 60);
-
-        $stampPlaceholder = '<div style="width:55px;height:55px;background:#f8fafc;border:1.5px dashed #cbd5e1;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:7px;font-weight:bold;">ختم</div>';
-
-        return '
-        <div style="margin-top:25px;page-break-inside:avoid;">
-            <div style="height:1.5px;background:linear-gradient(90deg,transparent,#cbd5e1,transparent);margin:12px 0;"></div>
-            <table style="width:100%;border:none;border-collapse:collapse;">
-                <tr>
-                    <td style="width:30%;text-align:center;border:none;vertical-align:top;padding:5px;">
-                        <div style="min-height:65px;display:flex;align-items:center;justify-content:center;">
-                            ' . ($stampHtml ?: $stampPlaceholder) . '
-                        </div>
-                        <p style="font-size:8px;color:#64748b;margin:4px 0 0 0;">ختم المؤسسة</p>
-                    </td>
-                    <td style="width:40%;text-align:center;border:none;vertical-align:top;padding:5px;">
-                        <div style="border-bottom:1.5px solid #1e3a5f;width:140px;height:35px;margin:0 auto;"></div>
-                        <p style="font-size:9px;color:#1e3a5f;margin:5px 0 0 0;font-weight:bold;">مدير الموارد البشرية</p>
-                        <p style="font-size:7px;color:#94a3b8;margin:2px 0;">الاسم: ........................</p>
-                        <p style="font-size:7px;color:#94a3b8;margin:2px 0;">التوقيع: ....................</p>
-                        <p style="font-size:7px;color:#94a3b8;margin:2px 0;">التاريخ: ....................</p>
-                    </td>
-                    <td style="width:30%;text-align:center;border:none;vertical-align:top;padding:5px;">
-                        <div style="border-bottom:1.5px solid #059669;width:140px;height:35px;margin:0 auto;"></div>
-                        <p style="font-size:9px;color:#059669;margin:5px 0 0 0;font-weight:bold;">المدير العام</p>
-                        <p style="font-size:7px;color:#94a3b8;margin:2px 0;">الاسم: ........................</p>
-                        <p style="font-size:7px;color:#94a3b8;margin:2px 0;">التوقيع: ....................</p>
-                        <p style="font-size:7px;color:#94a3b8;margin:2px 0;">التاريخ: ....................</p>
-                    </td>
-                </tr>
-            </table>
-            <div style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:6px 12px;margin-top:12px;text-align:center;">
-                <p style="font-size:7px;color:#64748b;margin:0;">
-                    <strong>ITQAN HR</strong> — نظام إدارة الموارد البشرية | تاريخ الطباعة: ' . now()->format('Y-m-d H:i') . '
-                </p>
-            </div>
-        </div>';
-    }
-
-    protected function getAllowanceTypeName($type)
-    {
-        $type = strtolower($type);
-        $type = str_replace(['_allowance', '_'], '', $type);
-        
-        $names = [
-            'transport' => 'بدل نقل',
-            'housing' => 'بدل سكن',
-            'food' => 'بدل طعام',
-            'phone' => 'بدل هاتف',
-            'education' => 'بدل تعليم',
-            'medical' => 'بدل علاج',
-            'other' => 'بدل أخرى',
-            't' => 'بدل نقل',
-            'h' => 'بدل سكن',
-            'f' => 'بدل طعام',
-            'p' => 'بدل هاتف',
-            'e' => 'بدل تعليم',
-            'm' => 'بدل علاج',
-        ];
-        return $names[$type] ?? 'بدل ' . $type;
-    }
-
-    protected function getIncentiveTypeName($type)
-    {
-        $type = strtolower($type);
-        $type = str_replace(['_incentive', '_'], '', $type);
-        
-        $names = [
-            'bonus' => 'مكافأة',
-            'commission' => 'عمولة',
-            'performance' => 'حافز اداء',
-            'allowance' => 'بدل اضافي',
-            'other' => 'مكافأة اخرى',
-            'b' => 'مكافأة',
-            'c' => 'عمولة',
-            'perf' => 'حافز اداء',
-        ];
-        return $names[$type] ?? $type;
-    }
-
-    protected function getInsuranceTypeName($type)
-    {
-        $names = [
-            'none' => 'بدون',
-            'health' => 'صحي',
-            'social' => 'اجتماعي',
-            'both' => 'صحي واجتماعي',
-        ];
-        return $names[$type] ?? $type;
-    }
-
-    protected function getDefaultTaxBrackets()
-    {
-        $raw = DB::table('settings')->where('key', 'tax-brackets')->value('value');
-        if ($raw === null) {
-            return [];
-        }
-        if (is_array($raw)) {
-            $data = $raw;
-        } else {
-            $decoded = json_decode($raw, true);
-            $data = is_array($decoded) ? $decoded : [];
-        }
-        // backward compatibility: unwrap {brackets: [...]} from old saves
-        if (isset($data['brackets']) && is_array($data['brackets'])) {
-            $data = $data['brackets'];
-        }
-        return $data;
-    }
-}
-
 class PdfExportController extends Controller
 {
     use PdfHelpersTrait;
@@ -337,23 +122,23 @@ class PdfExportController extends Controller
             }
             
             ob_start();
-            $pdf = new \TCPDF('L', 'mm', 'A4', true, 'UTF-8', false);
+            $pdf = $this->createTcpdf(null, 'L');
             ob_end_clean();
             
-            $pdf->SetCreator('ITQAN HR');
-            $pdf->SetAuthor($org['name'] ?? 'ITQAN HR');
+            $pdf->SetCreator('SCARLET HR');
+            $pdf->SetAuthor($org['name'] ?? 'SCARLET HR');
             $pdf->SetTitle('كشف المرتبات');
             $pdf->SetSubject('كشف المرتبات الشهري');
             
             $pdf->setRTL(true);
-            $pdf->SetFont('dejavusans', '', 10);
+            $pdf->SetFont($this->getConfiguredFont(), '', 10);
             $pdf->SetAutoPageBreak(true, 25);
             
             $pdf->AddPage();
             
             $html = $this->generateDetailedSalaryReportHtml($org, $salaryData, $monthName, $year, $currencySymbol);
             ob_start();
-            $pdf->writeHTML(\App\Services\ArabicPdfService::fixAllah($html), true, false, true, false, 'R');
+            $pdf->writeHTML(\App\Services\ArabicPdfService::fixAllah($this->applyPdfTheme($html)), true, false, true, false, 'R');
             ob_end_clean();
             
             $pdfContent = $pdf->Output('salary_report.pdf', 'S');
@@ -410,16 +195,16 @@ class PdfExportController extends Controller
             }
 
             ob_start();
-            $pdf = new \TCPDF('P', 'mm', 'A4', true, 'UTF-8', false);
+            $pdf = $this->createTcpdf();
             ob_end_clean();
 
-            $pdf->SetCreator('ITQAN HR');
-            $pdf->SetAuthor($org['name'] ?? 'ITQAN HR');
+            $pdf->SetCreator('SCARLET HR');
+            $pdf->SetAuthor($org['name'] ?? 'SCARLET HR');
             $pdf->SetTitle('تقرير ضريبة الدخل');
             $pdf->SetSubject('تقرير ضريبة الدخل السنوي');
             
             $pdf->setRTL(true);
-            $pdf->SetFont('dejavusans', '', 10);
+            $pdf->SetFont($this->getConfiguredFont(), '', 10);
             $pdf->SetAutoPageBreak(true, 30);
             
             ob_start();
@@ -428,7 +213,7 @@ class PdfExportController extends Controller
             
             $html = $this->generateIncomeTaxReportHtml($org, $taxData, $year);
             ob_start();
-            $pdf->writeHTML(\App\Services\ArabicPdfService::fixAllah($html), true, false, true, false, 'R');
+            $pdf->writeHTML(\App\Services\ArabicPdfService::fixAllah($this->applyPdfTheme($html)), true, false, true, false, 'R');
             ob_end_clean();
             
             $pdfContent = $pdf->Output('income_tax_report.pdf', 'S');
@@ -467,28 +252,32 @@ class PdfExportController extends Controller
             foreach ($employees as $emp) {
                 $reportData[] = [
                     'employee' => $emp,
-                    'leaves' => $emp->leaves->whereYear('from_date', $year),
-                    'warnings' => $emp->warningsRelation->whereYear('date', $year),
+                    'leaves' => $emp->leaves->filter(function ($l) use ($year) {
+                        return $l->from_date && Carbon::parse($l->from_date)->year == $year;
+                    }),
+                    'warnings' => $emp->warningsRelation->filter(function ($w) use ($year) {
+                        return $w->date && Carbon::parse($w->date)->year == $year;
+                    }),
                 ];
             }
             
             ob_start();
-            $pdf = new \TCPDF('P', 'mm', 'A4', true, 'UTF-8', false);
+            $pdf = $this->createTcpdf();
             ob_end_clean();
             
-            $pdf->SetCreator('ITQAN HR');
-            $pdf->SetAuthor($org['name'] ?? 'ITQAN HR');
+            $pdf->SetCreator('SCARLET HR');
+            $pdf->SetAuthor($org['name'] ?? 'SCARLET HR');
             $pdf->SetTitle('Leave and Warning Report');
             $pdf->SetSubject('Annual Leave and Warning Report');
             
             $pdf->setRTL(true);
-            $pdf->SetFont('dejavusans', '', 10);
+            $pdf->SetFont($this->getConfiguredFont(), '', 10);
             $pdf->SetAutoPageBreak(true, 30);
             
             $pdf->AddPage();
             
             $html = $this->generateLeaveWarningReportHtml($org, $reportData, $year);
-            $pdf->writeHTML(\App\Services\ArabicPdfService::fixAllah($html), true, false, true, false, 'R');
+            $pdf->writeHTML(\App\Services\ArabicPdfService::fixAllah($this->applyPdfTheme($html)), true, false, true, false, 'R');
             
             $pdfContent = $pdf->Output('leave_warning_report.pdf', 'S');
             return response($pdfContent, 200)
@@ -517,21 +306,21 @@ class PdfExportController extends Controller
             $content = $this->generateLetterContent($letterType, $employee, $org, $params);
             
             ob_start();
-            $pdf = new \TCPDF('P', 'mm', 'A4', true, 'UTF-8', false);
+            $pdf = $this->createTcpdf();
             ob_end_clean();
             
-            $pdf->SetCreator('ITQAN HR');
-            $pdf->SetAuthor($org['name'] ?? 'ITQAN HR');
+            $pdf->SetCreator('SCARLET HR');
+            $pdf->SetAuthor($org['name'] ?? 'SCARLET HR');
             $pdf->SetTitle($content['title']);
             
             $pdf->setRTL(true);
-            $pdf->SetFont('dejavusans', '', 12);
+            $pdf->SetFont($this->getConfiguredFont(), '', 12);
             $pdf->SetAutoPageBreak(true, 40);
             
             $pdf->AddPage();
             
             $html = $this->generateLetterHtml($org, $employee, $content);
-            $pdf->writeHTML(\App\Services\ArabicPdfService::fixAllah($html), true, false, true, false, 'R');
+            $pdf->writeHTML(\App\Services\ArabicPdfService::fixAllah($this->applyPdfTheme($html)), true, false, true, false, 'R');
             
             $pdfContent = $pdf->Output('letter.pdf', 'S');
             return response($pdfContent, 200)
@@ -567,21 +356,21 @@ class PdfExportController extends Controller
             }
             
             ob_start();
-            $pdf = new \TCPDF('P', 'mm', 'A4', true, 'UTF-8', false);
+            $pdf = $this->createTcpdf();
             ob_end_clean();
             
-            $pdf->SetCreator('ITQAN HR');
-            $pdf->SetAuthor($org['name'] ?? 'ITQAN HR');
+            $pdf->SetCreator('SCARLET HR');
+            $pdf->SetAuthor($org['name'] ?? 'SCARLET HR');
             $pdf->SetTitle('تقرير الأقسام');
             
             $pdf->setRTL(true);
-            $pdf->SetFont('dejavusans', '', 10);
+            $pdf->SetFont($this->getConfiguredFont(), '', 10);
             $pdf->SetAutoPageBreak(true, 30);
             
             $pdf->AddPage();
             
             $html = $this->generateDepartmentReportHtml($org, $reportData, $year);
-            $pdf->writeHTML(\App\Services\ArabicPdfService::fixAllah($html), true, false, true, false, 'R');
+            $pdf->writeHTML(\App\Services\ArabicPdfService::fixAllah($this->applyPdfTheme($html)), true, false, true, false, 'R');
             
             $pdfContent = $pdf->Output('department_report.pdf', 'S');
             return response($pdfContent, 200)
@@ -627,21 +416,21 @@ class PdfExportController extends Controller
             }
             
             ob_start();
-            $pdf = new \TCPDF('P', 'mm', 'A4', true, 'UTF-8', false);
+            $pdf = $this->createTcpdf();
             ob_end_clean();
             
-            $pdf->SetCreator('ITQAN HR');
-            $pdf->SetAuthor($org['name'] ?? 'ITQAN HR');
+            $pdf->SetCreator('SCARLET HR');
+            $pdf->SetAuthor($org['name'] ?? 'SCARLET HR');
             $pdf->SetTitle('Salary Increase Report');
             
             $pdf->setRTL(true);
-            $pdf->SetFont('dejavusans', '', 10);
+            $pdf->SetFont($this->getConfiguredFont(), '', 10);
             $pdf->SetAutoPageBreak(true, 30);
             
             $pdf->AddPage();
             
             $html = $this->generateSalaryIncreaseReportHtml($org, $reportData, $year);
-            $pdf->writeHTML(\App\Services\ArabicPdfService::fixAllah($html), true, false, true, false, 'R');
+            $pdf->writeHTML(\App\Services\ArabicPdfService::fixAllah($this->applyPdfTheme($html)), true, false, true, false, 'R');
             
             $pdfContent = $pdf->Output('salary_increase_report.pdf', 'S');
             return response($pdfContent, 200)
@@ -686,21 +475,21 @@ class PdfExportController extends Controller
         }
         
         ob_start();
-        $pdf = new \TCPDF('P', 'mm', 'A4', true, 'UTF-8', false);
+        $pdf = $this->createTcpdf();
         ob_end_clean();
         
-        $pdf->SetCreator('ITQAN HR');
-        $pdf->SetAuthor($org['name'] ?? 'ITQAN HR');
+        $pdf->SetCreator('SCARLET HR');
+        $pdf->SetAuthor($org['name'] ?? 'SCARLET HR');
         $pdf->SetTitle('Salary Increase Report');
         
         $pdf->setRTL(true);
-        $pdf->SetFont('aealarabiya', '', 10);
+        $pdf->SetFont($this->getConfiguredFont(), '', 10);
         $pdf->SetAutoPageBreak(true, 30);
         
         $pdf->AddPage();
         
         $html = $this->generateSalaryIncreaseReportHtml($org, $reportData, $year);
-        $pdf->writeHTML(\App\Services\ArabicPdfService::fixAllah($html), true, false, true, false, 'R');
+        $pdf->writeHTML(\App\Services\ArabicPdfService::fixAllah($this->applyPdfTheme($html)), true, false, true, false, 'R');
         
         $pdfContent = $pdf->Output('salary_increase_report.pdf', 'S');
         return response($pdfContent, 200)
@@ -730,16 +519,16 @@ class PdfExportController extends Controller
             $org = $this->getOrganizationData();
             
             ob_start();
-            $pdf = new \TCPDF('P', 'mm', 'A4', true, 'UTF-8', false);
+            $pdf = $this->createTcpdf();
             ob_end_clean();
             
-            $pdf->SetCreator('ITQAN HR');
-            $pdf->SetAuthor($org['name'] ?? 'ITQAN HR');
+            $pdf->SetCreator('SCARLET HR');
+            $pdf->SetAuthor($org['name'] ?? 'SCARLET HR');
             $pdf->SetTitle('Employee Report - ' . $employee->name);
             $pdf->SetSubject('Employee Detailed Report');
             
             $pdf->setRTL(true);
-            $pdf->SetFont('dejavusans', '', 10);
+            $pdf->SetFont($this->getConfiguredFont(), '', 10);
             $pdf->SetAutoPageBreak(true, 25);
             
             $html = $this->generateEmployeeDetailedReportHtml($org, $employee);
@@ -747,7 +536,7 @@ class PdfExportController extends Controller
             $pages = explode('<pagebreak>', $html);
             foreach ($pages as $pageContent) {
                 $pdf->AddPage();
-                $pdf->writeHTML(\App\Services\ArabicPdfService::fixAllah($pageContent), true, false, true, false, 'R');
+                $pdf->writeHTML(\App\Services\ArabicPdfService::fixAllah($this->applyPdfTheme($pageContent)), true, false, true, false, 'R');
             }
             
             $pdfContent = $pdf->Output('employee_report_' . $employee->name . '.pdf', 'S');
@@ -763,23 +552,27 @@ class PdfExportController extends Controller
         }
     }
 
-    protected function getBaseStyles()
+    protected function getBaseStyles($cfg = null)
     {
+        $cfg = $this->getPdfSettingsData($cfg);
+        $font = $this->getConfiguredFont($cfg);
+        $headerColor = $this->getHeaderColor($cfg);
+        $titleColor = $this->getTitleColor($cfg);
         return '
         <style>
-            body { font-family: Amiri, dejavusans, sans-serif; direction: rtl; color: #1e293b; }
+            body { font-family: ' . $font . ', sans-serif; direction: rtl; color: #1e293b; }
             table { width: 100%; border-collapse: collapse; font-size: 9px; }
             th, td { border: 1px solid #cbd5e1; padding: 5px 6px; text-align: center; }
-            th { color: #ffffff; font-weight: bold; background: #1e3a5f; font-size: 9px; }
-            .title-box { background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border: 2px solid #1e3a5f; padding: 14px 12px; margin: 15px 0; text-align: center; border-radius: 10px; box-shadow: 0 2px 8px rgba(30,58,95,0.1); }
-            .title-box h2 { font-size: 16px; margin: 0; color: #1e3a5f; }
+            th { color: #ffffff; font-weight: bold; background: ' . $headerColor . '; font-size: 9px; }
+            .title-box { background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border: 2px solid ' . $titleColor . '; padding: 14px 12px; margin: 15px 0; text-align: center; border-radius: 10px; box-shadow: 0 2px 8px rgba(30,58,95,0.1); }
+            .title-box h2 { font-size: 16px; margin: 0; color: ' . $titleColor . '; }
             .title-box p { font-size: 11px; margin: 5px 0 0 0; color: #475569; }
             .summary-box { background: #f8fafc; border: 1.5px solid #cbd5e1; padding: 10px; margin: 10px 0; border-radius: 8px; }
-            .section-header { background: #1e3a5f; color: #ffffff; padding: 8px 12px; font-weight: bold; font-size: 11px; text-align: center; margin: 15px 0 8px 0; border-radius: 6px 6px 0 0; }
+            .section-header { background: ' . $headerColor . '; color: #ffffff; padding: 8px 12px; font-weight: bold; font-size: 11px; text-align: center; margin: 15px 0 8px 0; border-radius: 6px 6px 0 0; }
             .subsection-header { background: #3b82f6; color: #ffffff; padding: 5px 10px; font-weight: bold; font-size: 10px; text-align: center; border-radius: 4px; }
             .row-even { background: #ffffff; }
             .row-odd { background: #f8fafc; }
-            .total-row { background: #1e3a5f; color: #ffffff; font-weight: bold; }
+            .total-row { background: ' . $headerColor . '; color: #ffffff; font-weight: bold; }
             .total-row td { border-color: #334155; }
             .success-bg { background: #dcfce7; color: #16a34a; }
             .warning-bg { background: #fef3c7; color: #d97706; }
@@ -1084,7 +877,7 @@ class PdfExportController extends Controller
         
         <div style="margin:30px 0;padding:20px;background:#f0f9ff;border:2px solid #0ea5e9;border-radius:10px;">
             <h3 style="text-align:center;color:#0369a1;margin:0 0 15px 0;">اعتماد التقرير</h3>
-            <p style="text-align:center;color:#64748b;margin:0 0 20px 0;">تم إصدار هذا التقرير من نظام ITQAN HR لإدارة الموارد البشرية</p>
+            <p style="text-align:center;color:#64748b;margin:0 0 20px 0;">تم إصدار هذا التقرير من نظام SCARLET HR لإدارة الموارد البشرية</p>
         </div>';
         
         $html .= $this->getOfficialFooterHtml($org);
@@ -1106,8 +899,9 @@ class PdfExportController extends Controller
         
         // Earnings table
         $html .= '
-        <p style="font-weight:bold;color:#1e3a5f;font-size:12px;margin:15px 0 5px 0;padding:8px 12px;background:#eef2ff;border-radius:6px;border-right:3px solid #1e3a5f;">جدول الاستحقاقات</p>
-        <table>
+        <p style="font-weight:bold;color:#1e3a5f;font-size:12px;margin:15px 0 5px 0;padding:8px 12px;background:#eef2ff;border-radius:6px;border-right:3px solid #1e3a5f;">جدول الاستحقاقات</p>';
+
+        $theadHtml = '
             <thead>
                 <tr>
                     <th style="width:4%">#</th>
@@ -1119,10 +913,10 @@ class PdfExportController extends Controller
                     <th style="width:8%">الحوافز</th>
                     <th style="width:10%">إجمالي الاستحقاقات</th>
                 </tr>
-            </thead>
-            <tbody>';
+            </thead>';
         
         $totals = ['base' => 0, 'position' => 0, 'allowances' => 0, 'incentives' => 0, 'gross' => 0];
+        $rowHtmls = [];
         
         foreach ($salaryData as $i => $emp) {
             $totalAllowances = array_sum(array_column($emp['allowances'], 'amount'));
@@ -1135,7 +929,7 @@ class PdfExportController extends Controller
             $totals['gross'] += $emp['gross_salary'];
             
             $rowClass = $i % 2 === 0 ? 'row-even' : 'row-odd';
-            $html .= '<tr class="' . $rowClass . '">
+            $rowHtmls[] = '<tr class="' . $rowClass . '">
                 <td>' . ($i + 1) . '</td>
                 <td style="font-weight:bold;text-align:right;">' . htmlspecialchars($emp['employee']->name) . '</td>
                 <td>' . htmlspecialchars($emp['employee']->department?->name ?? '-') . '</td>
@@ -1147,20 +941,23 @@ class PdfExportController extends Controller
             </tr>';
         }
         
-        $html .= '<tr class="total-row">
+        $totalRow = '<tr class="total-row">
             <td colspan="3">المجموع</td>
             <td>' . number_format($totals['base'], 2) . '</td>
             <td>' . number_format($totals['position'], 2) . '</td>
             <td>' . number_format($totals['allowances'], 2) . '</td>
             <td>' . number_format($totals['incentives'], 2) . '</td>
             <td>' . number_format($totals['gross'], 2) . '</td>
-        </tr></tbody></table>';
+        </tr>';
+        
+        $rowsPerPage = (int)($this->getPdfSettingsData()['rows_per_page'] ?? 25);
+        $html .= $this->paginateTableHtml($theadHtml, $rowHtmls, $rowsPerPage, $totalRow);
         
         // Deductions table
         $html .= '
-        <p style="font-weight:bold;color:#dc2626;font-size:12px;margin:15px 0 5px 0;padding:8px 12px;background:#fef2f2;border-radius:6px;border-right:3px solid #dc2626;">جدول الخصومات</p>
-        
-        <table>
+        <p style="font-weight:bold;color:#dc2626;font-size:12px;margin:15px 0 5px 0;padding:8px 12px;background:#fef2f2;border-radius:6px;border-right:3px solid #dc2626;">جدول الخصومات</p>';
+
+        $dedTheadHtml = '
             <thead>
                 <tr style="background:#dc2626;">
                     <th style="width:4%">#</th>
@@ -1172,10 +969,10 @@ class PdfExportController extends Controller
                     <th style="width:10%">إجمالي الخصومات</th>
                     <th style="width:10%">صافي الراتب</th>
                 </tr>
-            </thead>
-            <tbody>';
+            </thead>';
         
         $totals2 = ['insurance' => 0, 'deductions' => 0, 'attendance' => 0, 'advances' => 0, 'total_ded' => 0, 'net' => 0];
+        $dedRowHtmls = [];
         
         foreach ($salaryData as $i => $emp) {
             $attendanceDeduction = $emp['attendance_deductions'] ?? 0;
@@ -1190,7 +987,7 @@ class PdfExportController extends Controller
             $totals2['net'] += $emp['net_salary'];
             
             $rowClass = $i % 2 === 0 ? 'row-even' : 'row-odd';
-            $html .= '<tr class="' . $rowClass . '">
+            $dedRowHtmls[] = '<tr class="' . $rowClass . '">
                 <td>' . ($i + 1) . '</td>
                 <td style="font-weight:bold;text-align:right;">' . htmlspecialchars($emp['employee']->name) . '</td>
                 <td>' . number_format($emp['insurance_amount'], 2) . '</td>
@@ -1202,7 +999,7 @@ class PdfExportController extends Controller
             </tr>';
         }
         
-        $html .= '<tr style="background:#dc2626;color:white;font-weight:bold;">
+        $dedTotalRow = '<tr style="background:#dc2626;color:white;font-weight:bold;">
             <td colspan="2">المجموع</td>
             <td>' . number_format($totals2['insurance'], 2) . '</td>
             <td>' . number_format($totals2['deductions'], 2) . '</td>
@@ -1210,7 +1007,9 @@ class PdfExportController extends Controller
             <td>' . number_format($totals2['advances'], 2) . '</td>
             <td>' . number_format($totals2['total_ded'], 2) . '</td>
             <td>' . number_format($totals2['net'], 2) . '</td>
-        </tr></tbody></table>';
+        </tr>';
+
+        $html .= $this->paginateTableHtml($dedTheadHtml, $dedRowHtmls, $rowsPerPage, $dedTotalRow);
         
         // Summary
         $html .= '
@@ -1423,21 +1222,21 @@ class PdfExportController extends Controller
                 
             case 'good_conduct':
                 $body = '
-                    <p style="text-align:justify;line-height:2;">تشهد مؤسسة <strong>' . htmlspecialchars($org['name'] ?? 'ITQAN HR') . '</strong> بأن الموظف/ة <strong>' . htmlspecialchars($employee->name) . '</strong> كان/تعمل لديها خلال الفترة من <strong>' . htmlspecialchars($employee->hire_date ?? '-') . '</strong> وحتى تاريخه.</p>
+                    <p style="text-align:justify;line-height:2;">تشهد مؤسسة <strong>' . htmlspecialchars($org['name'] ?? 'SCARLET HR') . '</strong> بأن الموظف/ة <strong>' . htmlspecialchars($employee->name) . '</strong> كان/تعمل لديها خلال الفترة من <strong>' . htmlspecialchars($employee->hire_date ?? '-') . '</strong> وحتى تاريخه.</p>
                     <p style="text-align:justify;line-height:2;">وخلال فترة عمله/عملها، فقد شهدنا عليه/عليها بحسن السير والسلوك، والأداء المهني المتميز، والتزامه/التزامها بكافة السياسات والأنظمة المتبعة في المؤسسة.</p>
                 ';
                 break;
                 
             case 'salary_verification':
                 $body = '
-                    <p style="text-align:justify;line-height:2;">تشهد مؤسسة <strong>' . htmlspecialchars($org['name'] ?? 'ITQAN HR') . '</strong> بأن الموظف/ة <strong>' . htmlspecialchars($employee->name) . '</strong> يتقاض/تتقاضى راتباً شهرياً قدره <strong>' . number_format($employee->base_salary ?? 0, 2) . ' ' . ($org['currency_symbol'] ?? 'جنيه سوداني') . '</strong>.</p>
+                    <p style="text-align:justify;line-height:2;">تشهد مؤسسة <strong>' . htmlspecialchars($org['name'] ?? 'SCARLET HR') . '</strong> بأن الموظف/ة <strong>' . htmlspecialchars($employee->name) . '</strong> يتقاض/تتقاضى راتباً شهرياً قدره <strong>' . number_format($employee->base_salary ?? 0, 2) . ' ' . ($org['currency_symbol'] ?? 'جنيه سوداني') . '</strong>.</p>
                     <p style="text-align:justify;line-height:2;">وذلك وفقاً للراتب المسجل في سجلات المؤسسة.</p>
                 ';
                 break;
                 
             case 'experience':
                 $body = '
-                    <p style="text-align:justify;line-height:2;">تشهد مؤسسة <strong>' . htmlspecialchars($org['name'] ?? 'ITQAN HR') . '</strong> بأن الموظف/ة <strong>' . htmlspecialchars($employee->name) . '</strong> قد عمل/ت لديها في قسم <strong>' . htmlspecialchars($employee->department?->name ?? '-') . '</strong> بمهنة <strong>' . htmlspecialchars($employee->position ?? '-') . '</strong> خلال الفترة من <strong>' . htmlspecialchars($employee->hire_date ?? '-') . '</strong>.</p>
+                    <p style="text-align:justify;line-height:2;">تشهد مؤسسة <strong>' . htmlspecialchars($org['name'] ?? 'SCARLET HR') . '</strong> بأن الموظف/ة <strong>' . htmlspecialchars($employee->name) . '</strong> قد عمل/ت لديها في قسم <strong>' . htmlspecialchars($employee->department?->name ?? '-') . '</strong> بمهنة <strong>' . htmlspecialchars($employee->position ?? '-') . '</strong> خلال الفترة من <strong>' . htmlspecialchars($employee->hire_date ?? '-') . '</strong>.</p>
                     <p style="text-align:justify;line-height:2;">وخلال فترة عمله/عملها، اكتسب/ت خبرات ومهارات متميزة في مجال عملها، وحاز/حازت على ثقة الإدارة والزملاء.</p>
                 ';
                 break;

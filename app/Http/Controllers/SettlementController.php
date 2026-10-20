@@ -8,6 +8,8 @@ use Illuminate\Http\Request;
 
 class SettlementController extends Controller
 {
+    use PdfHelpersTrait;
+
     public function index()
     {
         $settings = SettlementSetting::all();
@@ -135,26 +137,26 @@ class SettlementController extends Controller
             }
         ])->findOrFail($employeeId);
         
-        $org = SettlementSetting::getOrganizationData();
+        $org = self::getOrganizationData();
         $settlement = SettlementSetting::calculateFullSettlement($employee);
         
         ob_start();
-        $pdf = new \TCPDF('P', 'mm', 'A4', true, 'UTF-8', false);
+        $pdf = $this->createTcpdf();
         ob_end_clean();
         
-        $pdf->SetCreator('ITQAN HR');
-        $pdf->SetAuthor($org['name'] ?? 'ITQAN HR');
+        $pdf->SetCreator('SCARLET HR');
+        $pdf->SetAuthor($org['name'] ?? 'SCARLET HR');
         $pdf->SetTitle('تسوية مستحقات الموظف');
         $pdf->SetSubject('تسوية إنهاء الخدمة');
         
         $pdf->setRTL(true);
-        $pdf->SetFont('aealarabiya', '', 10);
+        $pdf->SetFont($this->getConfiguredFont(), '', 10);
         $pdf->SetAutoPageBreak(true, 25);
         
         $pdf->AddPage();
         
         $html = $this->generateSettlementPdfHtml($org, $settlement, $employee);
-        $pdf->writeHTML(\App\Services\ArabicPdfService::fixAllah($html), true, false, true, false, 'R');
+        $pdf->writeHTML(\App\Services\ArabicPdfService::fixAllah($this->applyPdfTheme($html)), true, false, true, false, 'R');
         
         $pdfContent = $pdf->Output('settlement_' . $employee->name . '.pdf', 'S');
         return response($pdfContent, 200)
@@ -214,7 +216,7 @@ class SettlementController extends Controller
             <tr>
                 <td style="width:65px;text-align:center;">' . ($logoHtml ?: $logoPlaceholder) . '</td>
                 <td style="text-align:center;padding:5px 10px;">
-                    <h1 style="font-size:18px;margin:0;color:#1e3a5f;">' . htmlspecialchars($org['name'] ?? 'ITQAN HR') . '</h1>
+                    <h1 style="font-size:18px;margin:0;color:#1e3a5f;">' . htmlspecialchars($org['name'] ?? 'SCARLET HR') . '</h1>
                     <p style="font-size:9px;color:#64748b;margin:3px 0;">' . htmlspecialchars($org['address'] ?? '') . ' | ' . htmlspecialchars($org['phone'] ?? '') . '</p>
                 </td>
                 <td style="width:65px;"></td>
@@ -380,7 +382,7 @@ class SettlementController extends Controller
         
         <div style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:6px 12px;margin-top:12px;text-align:center;">
             <p style="font-size:7px;color:#64748b;margin:0;">
-                <strong>ITQAN HR</strong> — نظام إدارة الموارد البشرية | تاريخ الطباعة: ' . now()->format('Y-m-d H:i') . '
+                <strong>SCARLET HR</strong> — نظام إدارة الموارد البشرية | تاريخ الطباعة: ' . now()->format('Y-m-d H:i') . '
             </p>
         </div>
         ';
@@ -395,7 +397,7 @@ class SettlementController extends Controller
             'logo' => $org->value['logo'] ?? null,
             'stamp' => $org->value['stamp'] ?? null,
         ]) : [
-            'name' => 'ITQAN HR',
+            'name' => 'SCARLET HR',
             'address' => '',
             'phone' => '',
             'currency_symbol' => 'جنيه',

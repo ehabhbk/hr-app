@@ -8,6 +8,8 @@ use Illuminate\Http\Request;
 
 class ContractController extends Controller
 {
+    use PdfHelpersTrait;
+
     public function generate(Request $request, $employeeId)
     {
         $employee = Employee::with('department')->findOrFail($employeeId);
@@ -55,22 +57,22 @@ class ContractController extends Controller
         $html = view('contracts.employment', $data)->render();
 
         ob_start();
-        $pdf = new \TCPDF('P', 'mm', 'A4', true, 'UTF-8', false);
+        $pdf = $this->createTcpdf();
         ob_end_clean();
 
-        $pdf->SetCreator('ITQAN HR');
+        $pdf->SetCreator('SCARLET HR');
         $pdf->SetAuthor($orgName);
         $pdf->SetTitle('عقد عمل');
         $pdf->SetSubject('عقد عمل');
 
         $pdf->setRTL(true);
-        $pdf->SetFont('dejavusans', '', 10);
+        $pdf->SetFont($this->getConfiguredFont(), '', 10);
         $pdf->SetAutoPageBreak(true, 25);
 
         $pdf->AddPage();
 
         ob_start();
-        $pdf->writeHTML(\App\Services\ArabicPdfService::fixAllah($html), true, false, true, false, 'R');
+        $pdf->writeHTML(\App\Services\ArabicPdfService::fixAllah($this->applyPdfTheme($html)), true, false, true, false, 'R');
         ob_end_clean();
 
         $pdfContent = $pdf->Output('contract.pdf', 'S');
