@@ -8,7 +8,7 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-// مزامنة أجهزة البصمة ومعالجة الحضور والانصراف تلقائياً كل 5 دقائق،
-// فتظهر بصمة الموظف في السجل خلال دقائق من تسجيلها على الجهاز.
+// مزامنة أجهزة البصمة ومعالجة الحضور والانصراف — شبكة أمان كل 5 دقائق.
+// المسار الأساسي للعرض الفوري هو المستمع اللحظي: php artisan attendance:listen
 // (يتطلب مهمة Windows مجدولة تشغّل artisan schedule:run كل دقيقة)
 Schedule::command('attendance:auto')->everyFiveMinutes()->withoutOverlapping();

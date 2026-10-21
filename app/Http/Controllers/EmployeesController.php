@@ -8,7 +8,7 @@ use App\Models\Fingerprint;
 use App\Models\Face;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
-use Jmrashed\Zkteco\Lib\ZKTeco;
+use Mithun\PhpZkteco\Libs\ZKTeco;
 
 class EmployeesController extends Controller
 {
@@ -234,13 +234,20 @@ class EmployeesController extends Controller
             try {
                 $device = \App\Models\AttendanceDevice::find($employee->attendance_device_id);
                 if ($device && $device->enabled) {
-                    $zk = new ZKTeco($device->host, (int)($device->port ?? 4370));
-                    if ($zk->connect()) {
+                    $protocol = $device->driver === 'tcp' ? 'tcp' : 'udp';
+                    try {
+                        $zk = new ZKTeco($device->host, (int)($device->port ?? 4370), protocol: $protocol);
+                        $connected = $zk->connect();
+                    } catch (\Exception $e) {
+                        $connected = false;
+                        Log::warning('Device connect failed: '.$e->getMessage());
+                    }
+                    if ($connected) {
                         $zk->disableDevice();
                         $zk->setUser(
                             (int)$employee->device_user_id,
                             $employee->device_user_id,
-                            $employee->name,
+                            mb_strcut($employee->name, 0, 24),
                             $employee->phone ?? ''
                         );
                         // Upload fingerprint templates if provided in request
@@ -250,7 +257,7 @@ class EmployeesController extends Controller
                                 if ($templateData) {
                                     $fingerId = $this->fingerPositionToId($fp['finger_position'] ?? 'right', $fp['finger'] ?? 'thumb');
                                     try {
-                                        $zk->enrollFingerprint((int)$employee->device_user_id, $fingerId, base64_decode($templateData));
+                                        $zk->setFingerprint((int)$employee->device_user_id, [$fingerId => base64_decode($templateData)]);
                                     } catch (\Exception $e) {
                                         Log::warning('FP auto-upload failed: '.$e->getMessage());
                                     }
@@ -657,13 +664,20 @@ class EmployeesController extends Controller
             try {
                 $device = \App\Models\AttendanceDevice::find($employee->attendance_device_id);
                 if ($device && $device->enabled) {
-                    $zk = new ZKTeco($device->host, (int)($device->port ?? 4370));
-                    if ($zk->connect()) {
+                    $protocol = $device->driver === 'tcp' ? 'tcp' : 'udp';
+                    try {
+                        $zk = new ZKTeco($device->host, (int)($device->port ?? 4370), protocol: $protocol);
+                        $connected = $zk->connect();
+                    } catch (\Exception $e) {
+                        $connected = false;
+                        Log::warning('Device connect failed: '.$e->getMessage());
+                    }
+                    if ($connected) {
                         $zk->disableDevice();
                         $zk->setUser(
                             (int)$employee->device_user_id,
                             $employee->device_user_id,
-                            $employee->name,
+                            mb_strcut($employee->name, 0, 24),
                             $employee->phone ?? ''
                         );
                         // Upload fingerprint templates from request if provided
@@ -673,7 +687,7 @@ class EmployeesController extends Controller
                                 if ($templateData) {
                                     $fingerId = $this->fingerPositionToId($fp['finger_position'] ?? 'right', $fp['finger'] ?? 'thumb');
                                     try {
-                                        $zk->enrollFingerprint((int)$employee->device_user_id, $fingerId, base64_decode($templateData));
+                                        $zk->setFingerprint((int)$employee->device_user_id, [$fingerId => base64_decode($templateData)]);
                                     } catch (\Exception $e) {
                                         Log::warning('FP auto-upload on update failed: '.$e->getMessage());
                                     }

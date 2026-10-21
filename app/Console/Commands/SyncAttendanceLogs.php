@@ -7,8 +7,7 @@ use App\Models\AttendanceDeviceLog;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
-use Jmrashed\Zkteco\Lib\Helper\Attendance;
-use Jmrashed\Zkteco\Lib\ZKTeco;
+use Mithun\PhpZkteco\Libs\ZKTeco;
 
 class SyncAttendanceLogs extends Command
 {
@@ -52,7 +51,14 @@ class SyncAttendanceLogs extends Command
         }
 
         try {
-            $zk = new ZKTeco($device->host, (int) $device->port);
+            $protocol = $device->driver === 'tcp' ? 'tcp' : 'udp';
+            try {
+                $zk = new ZKTeco($device->host, (int) $device->port, protocol: $protocol);
+            } catch (\Exception $e) {
+                $this->warn("فشل الاتصال بجهاز {$device->name}: ".$e->getMessage());
+
+                return;
+            }
 
             if (! $zk->connect()) {
                 $this->warn("فشل الاتصال بجهاز {$device->name}");
@@ -61,7 +67,7 @@ class SyncAttendanceLogs extends Command
             }
 
             $zk->disableDevice();
-            $logs = Attendance::get($zk);
+            $logs = $zk->getAttendances();
             $zk->enableDevice();
             $zk->disconnect();
 

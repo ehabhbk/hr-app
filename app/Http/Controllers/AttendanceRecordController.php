@@ -9,6 +9,7 @@ use App\Models\WorkShift;
 use App\Models\Setting;
 use App\Models\Warning;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
@@ -836,6 +837,27 @@ class AttendanceRecordController extends Controller
 
     // Process attendance from device logs
     public function processFromDeviceLogs(Request $request)
+    {
+        // قفل يمنع تشغيل المعالجة مرتين بالتوازي
+        // (المستمع اللحظي attendance:listen + المجدول attendance:auto + زر يدوي في الواجهة)
+        try {
+            $lock = Cache::lock('attendance:process-logs', 60);
+            $lock->block(15);
+        } catch (\Illuminate\Contracts\Cache\LockTimeoutException $e) {
+            return response()->json([
+                'processed' => 0,
+                'message' => 'معالجة أخرى جارية حالياً — ستُعالج البصمات في الدورة القادمة',
+            ]);
+        }
+
+        try {
+            return $this->runProcessFromDeviceLogs($request);
+        } finally {
+            $lock->release();
+        }
+    }
+
+    private function runProcessFromDeviceLogs(Request $request)
     {
         $fromDate = $request->from_date ?? now()->startOfMonth()->format('Y-m-d');
         $toDate = $request->to_date ?? now()->format('Y-m-d');

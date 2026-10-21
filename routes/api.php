@@ -111,6 +111,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/attendance-device/{id}/fingerprints', [AttendanceDeviceController::class, 'downloadFingerprints']);
     Route::get('/attendance-device/{id}/fingerprints/{uid}', [AttendanceDeviceController::class, 'downloadFingerprints']);
     Route::post('/attendance-device/{id}/upload-fingerprints', [AttendanceDeviceController::class, 'uploadFingerprints']);
+    Route::post('/attendance-device/{id}/pull-fingerprints', [AttendanceDeviceController::class, 'pullFingerprints']);
+    Route::post('/attendance-device/{id}/push-fingerprints', [AttendanceDeviceController::class, 'pushFingerprints']);
     Route::post('/attendance-device/{id}/enroll-fingerprint', [AttendanceDeviceController::class, 'enrollFingerprint']);
     Route::post('/attendance-device/{id}/enroll-face', [AttendanceDeviceController::class, 'enrollFace']);
     Route::post('/attendance-device/{id}/check-enrollment', [AttendanceDeviceController::class, 'checkEnrollment']);

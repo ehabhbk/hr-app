@@ -12,14 +12,39 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 use App\Services\ZKTecoService;
-use Jmrashed\Zkteco\Lib\ZKTeco;
+use Mithun\PhpZkteco\Libs\ZKTeco;
+use Jmrashed\Zkteco\Lib\ZKTeco as JmrashedZKTeco;
 
 class AttendanceDeviceController extends Controller
 {
     private function connect($device)
     {
-        $zk = new ZKTeco($device->host, (int)($device->port ?? 4370));
-        if (!$zk->connect()) {
+        $protocol = $device->driver === 'tcp' ? 'tcp' : 'udp';
+        try {
+            $zk = new ZKTeco($device->host, (int)($device->port ?? 4370), protocol: $protocol);
+            if (!$zk->connect()) {
+                return null;
+            }
+        } catch (\Exception $e) {
+            Log::error('AttendanceDeviceController@connect: ' . $e->getMessage());
+            return null;
+        }
+        return $zk;
+    }
+
+    /**
+     * اتصال بمكتبة jmrashed — يُستخدم فقط لدوال الوجه (enrollFaceTemplate / getFaceData)
+     * لأن مكتبة 0mithun لا تدعم قوالب الوجه.
+     */
+    private function connectFace($device)
+    {
+        try {
+            $zk = new JmrashedZKTeco($device->host, (int)($device->port ?? 4370));
+            if (!$zk->connect()) {
+                return null;
+            }
+        } catch (\Exception $e) {
+            Log::error('AttendanceDeviceController@connectFace: ' . $e->getMessage());
             return null;
         }
         return $zk;
@@ -89,7 +114,8 @@ class AttendanceDeviceController extends Controller
         $port = $request->input('port', $device->port ?? 4370);
 
         try {
-            $zk = new ZKTeco($host, (int)$port);
+            $protocol = $device->driver === 'tcp' ? 'tcp' : 'udp';
+            $zk = new ZKTeco($host, (int)$port, protocol: $protocol);
 
             $start = microtime(true);
             $connected = $zk->connect();
@@ -144,7 +170,7 @@ class AttendanceDeviceController extends Controller
         }
 
         $zk->disableDevice();
-        $logs = $zk->getAttendance();
+        $logs = $zk->getAttendances();
         $zk->enableDevice();
         $zk->disconnect();
 
@@ -209,7 +235,7 @@ class AttendanceDeviceController extends Controller
                 }
 
                 $zk->disableDevice();
-                $logs = $zk->getAttendance();
+                $logs = $zk->getAttendances();
                 $zk->enableDevice();
                 $zk->disconnect();
 
@@ -392,7 +418,7 @@ class AttendanceDeviceController extends Controller
             return response()->json(['message' => 'Connection failed'], 422);
         }
 
-        $users = $zk->getUser();
+        $users = $zk->getUsers();
         $zk->disconnect();
 
         return response()->json(['data' => $users]);
@@ -417,7 +443,7 @@ class AttendanceDeviceController extends Controller
                 }
             }
         } else {
-            $users = $zk->getUser();
+            $users = $zk->getUsers();
             foreach ($users as $user) {
                 $raw = $zk->getFingerprint($user['uid']);
                 if (!empty($raw)) {
@@ -466,6 +492,180 @@ class AttendanceDeviceController extends Controller
     }
 
     /**
+     * جلب البصمات من الجهاز وحفظها في قاعدة البيانات
+     * يطابق مستخدمي الجهاز بالموظفين عبر device_user_id ويحفظ القوالب
+     * POST /attendance-device/{id}/pull-fingerprints
+     */
+    public function pullFingerprints($id)
+    {
+        $device = AttendanceDevice::findOrFail($id);
+
+        $zk = $this->connect($device);
+        if (!$zk) {
+            return response()->json(['message' => 'فشل الاتصال بالجهاز'], 422);
+        }
+
+        $collected = [];
+        $usersTotal = 0;
+
+        try {
+            $zk->disableDevice();
+            $users = $zk->getUsers();
+            $usersTotal = is_array($users) ? count($users) : 0;
+
+            if (is_array($users)) {
+                foreach ($users as $user) {
+                    $uid = (int)($user['uid'] ?? 0);
+                    if (!$uid) continue;
+                    $templates = $zk->getFingerprint($uid);
+                    if (!empty($templates)) {
+                        $collected[] = [
+                            'userid' => (string)($user['userid'] ?? $uid),
+                            'name' => $user['name'] ?? '',
+                            'templates' => $templates,
+                        ];
+                    }
+                }
+            }
+            $zk->enableDevice();
+            $zk->disconnect();
+        } catch (\Exception $e) {
+            try { $zk->enableDevice(); } catch (\Exception $e2) {}
+            try { $zk->disconnect(); } catch (\Exception $e2) {}
+            Log::error('pullFingerprints: ' . $e->getMessage());
+            return response()->json(['message' => 'خطأ أثناء الجلب من الجهاز: ' . $e->getMessage()], 500);
+        }
+
+        $saved = 0;
+        $matchedUsers = 0;
+        $unmatched = [];
+
+        foreach ($collected as $entry) {
+            $employee = Employee::where('device_user_id', $entry['userid'])->first();
+            if (!$employee) {
+                $unmatched[] = $entry['userid'];
+                continue;
+            }
+            $matchedUsers++;
+
+            foreach ($entry['templates'] as $fingerId => $template) {
+                Fingerprint::updateOrCreate(
+                    [
+                        'employee_id' => $employee->id,
+                        'attendance_device_id' => $device->id,
+                        'finger_id' => (string)$fingerId,
+                    ],
+                    [
+                        'template' => base64_encode($template),
+                        'is_active' => true,
+                    ]
+                );
+                $saved++;
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'users_total' => $usersTotal,
+            'users_with_fingerprints' => count($collected),
+            'users_matched' => $matchedUsers,
+            'fingerprints_saved' => $saved,
+            'unmatched' => $unmatched,
+            'message' => "تم حفظ $saved بصمة لـ $matchedUsers موظف في قاعدة البيانات",
+        ]);
+    }
+
+    /**
+     * رفع بصمات قاعدة البيانات إلى الجهاز
+     * يرسل للموظفين ذوي device_user_id قوالب بصماتهم النشطة (ويُنشئ المستخدم على الجهاز)
+     * POST /attendance-device/{id}/push-fingerprints
+     */
+    public function pushFingerprints($id)
+    {
+        $device = AttendanceDevice::findOrFail($id);
+
+        $employees = Employee::whereNotNull('device_user_id')
+            ->whereHas('fingerprints')
+            ->with('fingerprints')
+            ->get();
+
+        if ($employees->isEmpty()) {
+            return response()->json([
+                'success' => true,
+                'employees_pushed' => 0,
+                'fingerprints_pushed' => 0,
+                'message' => 'لا يوجد موظفون ذوو بصمات في قاعدة البيانات',
+            ]);
+        }
+
+        $zk = $this->connect($device);
+        if (!$zk) {
+            return response()->json(['message' => 'فشل الاتصال بالجهاز'], 422);
+        }
+
+        $employeesPushed = 0;
+        $fingerprintsPushed = 0;
+        $failures = [];
+
+        try {
+            $zk->disableDevice();
+
+            foreach ($employees as $employee) {
+                $uid = (int)$employee->device_user_id;
+                if (!$uid) continue;
+
+                $userOk = false;
+                try {
+                    $userOk = $zk->setUser($uid, $employee->device_user_id, mb_strcut($employee->name, 0, 24), $employee->phone ?? '');
+                } catch (\Exception $e) {
+                    Log::warning("pushFingerprints setUser failed for {$employee->id}: " . $e->getMessage());
+                }
+                if ($userOk === false) {
+                    $failures[] = ['employee' => $employee->name, 'error' => 'فشل إنشاء المستخدم على الجهاز'];
+                    continue;
+                }
+
+                $templates = [];
+                foreach ($employee->fingerprints as $fp) {
+                    if (!$fp->is_active || !$fp->template) continue;
+                    $templates[(int)$fp->finger_id] = base64_decode($fp->template);
+                }
+
+                if (empty($templates)) continue;
+
+                try {
+                    $count = $zk->setFingerprint($uid, $templates);
+                    $fingerprintsPushed += (int)$count;
+                    $employeesPushed++;
+                    if ($count < count($templates)) {
+                        $failures[] = ['employee' => $employee->name, 'error' => "تم رفع $count من " . count($templates) . " بصمة فقط"];
+                    }
+                } catch (\Exception $e) {
+                    Log::warning("pushFingerprints setFingerprint failed for {$employee->id}: " . $e->getMessage());
+                    $failures[] = ['employee' => $employee->name, 'error' => $e->getMessage()];
+                }
+            }
+
+            $zk->enableDevice();
+            $zk->disconnect();
+        } catch (\Exception $e) {
+            try { $zk->enableDevice(); } catch (\Exception $e2) {}
+            try { $zk->disconnect(); } catch (\Exception $e2) {}
+            Log::error('pushFingerprints: ' . $e->getMessage());
+            return response()->json(['message' => 'خطأ أثناء الرفع للجهاز: ' . $e->getMessage()], 500);
+        }
+
+        return response()->json([
+            'success' => true,
+            'employees_total' => $employees->count(),
+            'employees_pushed' => $employeesPushed,
+            'fingerprints_pushed' => $fingerprintsPushed,
+            'failures' => $failures,
+            'message' => "تم رفع بصمات $employeesPushed موظف ($fingerprintsPushed بصمة) إلى الجهاز",
+        ]);
+    }
+
+    /**
      * رفع قالب بصمة موجود مسبقاً إلى الجهاز (للمزامنة)
      * POST /attendance-device/{id}/register-fingerprint
      */
@@ -493,11 +693,11 @@ class AttendanceDeviceController extends Controller
         }
 
         $zk->disableDevice();
-        $success = $zk->enrollFingerprint((int)$deviceUserId, $data['finger_id'], $templateData);
+        $count = $zk->setFingerprint((int)$deviceUserId, [(int)$data['finger_id'] => $templateData]);
         $zk->enableDevice();
         $zk->disconnect();
 
-        if ($success === false) {
+        if ($count === 0) {
             return response()->json(['message' => 'فشل تسجيل البصمة على الجهاز'], 500);
         }
 
@@ -543,7 +743,7 @@ class AttendanceDeviceController extends Controller
 
         $templateData = base64_decode($data['template']);
 
-        $zk = $this->connect($device);
+        $zk = $this->connectFace($device);
         if (!$zk) {
             return response()->json(['message' => 'Connection failed'], 422);
         }
@@ -578,7 +778,7 @@ class AttendanceDeviceController extends Controller
     {
         $device = AttendanceDevice::findOrFail($id);
 
-        $zk = $this->connect($device);
+        $zk = $this->connectFace($device);
         if (!$zk) {
             return response()->json(['message' => 'Connection failed'], 422);
         }
@@ -629,7 +829,7 @@ class AttendanceDeviceController extends Controller
             $zk->setUser(
                 (int)$deviceUserId,
                 $deviceUserId,
-                $employee->name,
+                mb_strcut($employee->name, 0, 24),
                 $employee->phone ?? ''
             );
             $results['user_created'] = true;
@@ -638,23 +838,13 @@ class AttendanceDeviceController extends Controller
             foreach ($employee->fingerprints as $fp) {
                 if ($fp->template) {
                     $templateData = base64_decode($fp->template);
-                    if ($zk->enrollFingerprint((int)$deviceUserId, (int)$fp->finger_id, $templateData)) {
+                    $count = $zk->setFingerprint((int)$deviceUserId, [(int)$fp->finger_id => $templateData]);
+                    if ($count > 0) {
                         $fingerprintCount++;
                     }
                 }
             }
             $results['fingerprints_uploaded'] = $fingerprintCount;
-
-            $faceCount = 0;
-            foreach ($employee->faces as $face) {
-                if ($face->template) {
-                    $templateData = base64_decode($face->template);
-                    if ($zk->enrollFaceTemplate((int)$deviceUserId, $templateData)) {
-                        $faceCount++;
-                    }
-                }
-            }
-            $results['faces_uploaded'] = $faceCount;
 
             $zk->enableDevice();
             $zk->disconnect();
@@ -662,6 +852,31 @@ class AttendanceDeviceController extends Controller
             try { $zk->disconnect(); } catch (\Exception $e2) {}
             return response()->json(['message' => $e->getMessage()], 500);
         }
+
+        // رفع قوالب الوجه عبر jmrashed (اتصال منفصل — 0mithun لا تدعم الوجه)
+        $faceCount = 0;
+        if ($employee->faces->isNotEmpty()) {
+            $zkFace = $this->connectFace($device);
+            if ($zkFace) {
+                try {
+                    $zkFace->disableDevice();
+                    foreach ($employee->faces as $face) {
+                        if ($face->template) {
+                            $templateData = base64_decode($face->template);
+                            if ($zkFace->enrollFaceTemplate((int)$deviceUserId, $templateData)) {
+                                $faceCount++;
+                            }
+                        }
+                    }
+                    $zkFace->enableDevice();
+                } catch (\Exception $e) {
+                    try { $zkFace->enableDevice(); } catch (\Exception $e2) {}
+                    Log::warning('Face upload failed: ' . $e->getMessage());
+                }
+                try { $zkFace->disconnect(); } catch (\Exception $e2) {}
+            }
+        }
+        $results['faces_uploaded'] = $faceCount;
 
         return response()->json([
             'success' => true,

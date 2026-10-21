@@ -7,7 +7,7 @@ use App\Models\AttendanceDeviceSetting;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
-use Jmrashed\Zkteco\Lib\ZKTeco;
+use Mithun\PhpZkteco\Libs\ZKTeco;
 
 class AttendanceDeviceSettingController extends Controller
 {
@@ -218,7 +218,8 @@ class AttendanceDeviceSettingController extends Controller
                 'clear_device_logs' => 'sometimes|boolean',
             ]);
 
-            $zk = new ZKTeco($setting->host, (int) $setting->port);
+            $timeoutSeconds = max(1, (int)ceil($setting->timeout_ms / 1000));
+            $zk = new ZKTeco($setting->host, (int) $setting->port, timeout: $timeoutSeconds);
 
             if (!$zk->connect()) {
                 return response()->json([
@@ -227,7 +228,7 @@ class AttendanceDeviceSettingController extends Controller
             }
 
             $zk->disableDevice();
-            $logs = $zk->getAttendance();
+            $logs = $zk->getAttendances();
             $zk->enableDevice();
 
             if ($request->boolean('clear_device_logs')) {

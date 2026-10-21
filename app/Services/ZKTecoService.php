@@ -2,7 +2,7 @@
 
 namespace App\Services;
 
-use Jmrashed\Zkteco\Lib\ZKTeco;
+use Mithun\PhpZkteco\Libs\ZKTeco;
 use App\Models\AttendanceDevice;
 use Illuminate\Support\Facades\Log;
 
@@ -41,7 +41,7 @@ class ZKTecoService
             // Remove existing fingerprint for this finger first
             $zk->removeFingerprint((int)$userId, [$fingerId]);
 
-            $zk->setUser($userId, $name, '', 0);
+            $zk->setUser((int)$userId, $userId, $name, '');
             usleep(300000);
 
             // Try to start enrollment mode on the device
@@ -103,7 +103,7 @@ class ZKTecoService
                 ];
             }
 
-            $zk->setUser($userId, $name, '', 0);
+            $zk->setUser((int)$userId, $userId, $name, '');
             usleep(300000);
 
             // Enable face function on device
@@ -204,7 +204,7 @@ class ZKTecoService
 
         try {
             $zk->disableDevice();
-            $zk->setUser($userId, $name, '', 0);
+            $zk->setUser((int)$userId, $userId, $name, '');
             $zk->enableDevice();
             $zk->disconnect();
 
@@ -221,8 +221,15 @@ class ZKTecoService
             return null;
         }
 
-        $zk = new ZKTeco($device->host, (int)($device->port ?? 4370));
-        if (!$zk->connect()) {
+        $protocol = $device->driver === 'tcp' ? 'tcp' : 'udp';
+
+        try {
+            $zk = new ZKTeco($device->host, (int)($device->port ?? 4370), protocol: $protocol);
+            if (!$zk->connect()) {
+                return null;
+            }
+        } catch (\Exception $e) {
+            Log::error('ZKTecoService@connect: ' . $e->getMessage());
             return null;
         }
 
